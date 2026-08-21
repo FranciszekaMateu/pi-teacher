@@ -1,9 +1,10 @@
 {
-	"id": "pi-obsidian",
-	"name": "Pi Obsidian",
-	"version": "0.0.2",
+	"id": "pi-teacher",
+	"name": "Pi Teacher",
+	"version": "0.1.0",
 	"minAppVersion": "1.5.7",
-	"description": "Run a pi-style agent inside Obsidian with vault-scoped tools and a chat side panel.",
-	"author": "Simon Liang",
-	"isDesktopOnly": false
+	"description": "A one-to-one AI tutor in Obsidian powered by the pi agent harness. Probe what you know, plan the lesson as a dependency graph, and walk you through it one step at a time with quizzes. Uses your OpenAI/ChatGPT subscription.",
+	"author": "Francisco Escobar",
+	"authorUrl": "https://github.com/FranciszekaMateu",
+	"isDesktopOnly": true
 }

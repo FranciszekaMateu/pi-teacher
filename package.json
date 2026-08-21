@@ -1,38 +1,42 @@
 {
-	"name": "pi-obsidian",
-	"version": "0.0.2",
-	"description": "Run a pi-style agent inside Obsidian with vault-scoped tools and a chat side panel.",
-	"main": "main.js",
-	"type": "module",
-	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"test": "vitest run",
-		"version": "node version-bump.mjs && git add manifest.json versions.json",
-		"lint": "eslint ."
-	},
-	"keywords": [],
-	"license": "0-BSD",
-	"devDependencies": {
-		"@eslint/js": "9.30.1",
-		"@types/node": "^22.19.17",
-		"@types/react": "^19.2.14",
-		"@types/react-dom": "^19.2.3",
-		"esbuild": "0.25.5",
-		"eslint-plugin-obsidianmd": "0.1.9",
-		"globals": "14.0.0",
-		"jiti": "2.6.1",
-		"tslib": "2.4.0",
-		"typescript": "^5.8.3",
-		"typescript-eslint": "8.35.1",
-		"vitest": "^4.1.5"
-	},
-	"dependencies": {
-		"@mariozechner/pi-agent-core": "^0.72.1",
-		"@mariozechner/pi-ai": "^0.72.1",
-		"obsidian": "latest",
-		"react": "^19.2.5",
-		"react-dom": "^19.2.5",
-		"typebox": "^1.1.37"
-	}
+  "name": "pi-teacher",
+  "version": "0.1.0",
+  "description": "A one-to-one AI tutor inside Obsidian: Socratic lessons, quizzes, and spaced repetition, powered by the pi agent harness and your ChatGPT subscription.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "lint": "eslint ."
+  },
+  "keywords": [],
+  "license": "0-BSD",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.2",
+    "@earendil-works/pi-ai": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@earendil-works/pi-session-backend-sqlite-node": "^0.84.2",
+    "@opentelemetry/api": "^1.9.1",
+    "obsidian": "latest",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "typebox": "^1.1.37"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.30.1",
+    "@types/node": "^22.19.17",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "esbuild": "0.25.5",
+    "eslint-plugin-obsidianmd": "0.1.9",
+    "globals": "14.0.0",
+    "jiti": "2.6.1",
+    "tslib": "2.4.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "8.35.1",
+    "vitest": "^4.1.5"
+  }
 }
