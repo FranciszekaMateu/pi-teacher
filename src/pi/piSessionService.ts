@@ -1,7 +1,7 @@
 import { App, Notice, normalizePath, TFile } from "obsidian";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readdir, readFile, rm, stat } from "node:fs/promises";
+import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -12,7 +12,8 @@ import { withRpcTimeout } from "./rpcTimeout";
 import { parseChatHistory, readChatTranscript, type ChatHistoryItem } from "./chatHistory";
 import { sessionFileToDelete } from "./chatDeletion";
 import { buildKnowledgeNote, noteContentChanged, sourceChatId } from "./knowledgeNote";
-import { applyQuizAttempt } from "./learningProgress";
+import { applyQuizAttempt, type MasteryByConcept } from "./learningProgress";
+import { buildMasteryFile, learnerProfilePrompt, mergeMastery, parseMasteryFile } from "./masteryStore";
 import type { VisualProposal } from "./visualProtocol";
 import { providedSourceUrls } from "./providedSources";
 import { teacherSystemPrompt } from "./teacherPrompt";
@@ -59,6 +60,10 @@ export class PiSessionService {
 	private readonly stdoutDecoder = new StringDecoder("utf8");
 	private stderr = "";
 	private resumeSessionPath: string | null = null;
+	private storedMastery: MasteryByConcept = {};
+	private readonly masteryTitles: Record<string, string> = {};
+	private masteryLoaded = false;
+	private masterySaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(options: PiSessionServiceOptions) {
 		this.app = options.app;
@@ -80,12 +85,46 @@ export class PiSessionService {
 	async initialize(): Promise<void> {
 		if (this.child && this.child.exitCode === null) return;
 		if (this.initialization) return this.initialization;
-		this.initialization = this.startProcess();
+		this.initialization = this.startProcess().then(async () => {
+			await this.loadPersistedMastery();
+		});
 		try {
 			await this.initialization;
 		} finally {
 			this.initialization = null;
 		}
+	}
+
+	/** Loads <vault>/.pi/agent/mastery.json once and calibrates the live session with it. */
+	private async loadPersistedMastery(): Promise<void> {
+		if (this.masteryLoaded) return;
+		this.masteryLoaded = true;
+		try {
+			const { mastery, titles } = parseMasteryFile(await readFile(this.masteryPath(), "utf8"));
+			this.storedMastery = mastery;
+			for (const [id, title] of Object.entries(titles)) this.masteryTitles[id] = title;
+			if (Object.keys(mastery).length) {
+				this.snapshot = { ...this.snapshot, mastery: mergeMastery(mastery, this.snapshot.mastery) };
+			}
+		} catch {
+			// No mastery file yet — nothing to calibrate with.
+		}
+	}
+
+	private masteryPath(): string {
+		return join(getVaultBasePath(this.app), ".pi", "agent", "mastery.json");
+	}
+
+	/** Debounced persistence so every quiz answer survives restarts. */
+	private scheduleMasterySave(): void {
+		if (this.masterySaveTimer) clearTimeout(this.masterySaveTimer);
+		this.masterySaveTimer = setTimeout(() => {
+			this.masterySaveTimer = null;
+			this.storedMastery = mergeMastery(this.storedMastery, this.snapshot.mastery);
+			void writeFile(this.masteryPath(), `${JSON.stringify(buildMasteryFile(this.snapshot.mastery, this.masteryTitles), null, "\t")}\n`, "utf8").catch((error) =>
+				console.error("[Pi Teacher] Could not persist mastery", error),
+			);
+		}, 1500);
 	}
 
 	async listChatHistory(): Promise<void> {
@@ -222,8 +261,12 @@ export class PiSessionService {
 		this.notify();
 		const sourceUrls = providedSourceUrls(prompt);
 		const sourceContext = sourceUrls.length ? `\n\n<pi-user-provided-sources>\n${sourceUrls.map((url) => `- ${url}`).join("\n")}\n</pi-user-provided-sources>` : "";
+		// Calibrate the first prompt of a fresh lesson with the persisted learner profile.
+		const isFirstPrompt = this.snapshot.messages.length === 0 && !this.snapshot.streamingMessage;
+		const profileContext = isFirstPrompt ? learnerProfilePrompt(mergeMastery(this.storedMastery, this.snapshot.mastery), this.masteryTitles) : null;
+		const message = `${profileContext ? `${profileContext}\n\n` : ""}${prompt}${sourceContext}`;
 		try {
-			await this.sendCommand("prompt", { message: `${prompt}${sourceContext}`, ...(images?.length ? { images } : {}) });
+			await this.sendCommand("prompt", { message, ...(images?.length ? { images } : {}) });
 		} catch (error) {
 			this.setError(toSafeError(error));
 		}
@@ -266,12 +309,19 @@ export class PiSessionService {
 		const quiz = this.snapshot.pendingQuiz;
 		if (quiz) {
 			this.snapshot = { ...this.snapshot, mastery: applyQuizAttempt(this.snapshot.mastery, quiz, answer), pendingQuiz: undefined };
+			this.scheduleMasterySave();
 			this.notify();
 		}
 		void this.sendPrompt(answer);
 	}
 
 	dispose(): void {
+		if (this.masterySaveTimer) {
+			clearTimeout(this.masterySaveTimer);
+			this.masterySaveTimer = null;
+			this.storedMastery = mergeMastery(this.storedMastery, this.snapshot.mastery);
+			void writeFile(this.masteryPath(), `${JSON.stringify(buildMasteryFile(this.snapshot.mastery, this.masteryTitles), null, "\t")}\n`, "utf8").catch(() => undefined);
+		}
 		const child = this.child;
 		this.child = null;
 		if (child) {
@@ -384,7 +434,15 @@ export class PiSessionService {
 			console.error("[Pi Teacher] Agent turn failed", event.errorMessage);
 		}
 		this.snapshot = applyRpcEvent(this.snapshot, event as never);
+		this.recordLessonTitles();
 		this.notify();
+	}
+
+	/** Keeps conceptId → title so persisted mastery stays human-readable. */
+	private recordLessonTitles(): void {
+		for (const node of this.snapshot.lesson?.nodes ?? []) {
+			if (node.id && node.title) this.masteryTitles[node.id] = node.title;
+		}
 	}
 
 	private sendCommand(type: string, extra: Record<string, unknown> = {}): Promise<RpcResponse> {

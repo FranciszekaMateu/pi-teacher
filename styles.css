@@ -143,6 +143,13 @@
 .pi-chat__lesson-track { display: flex; flex: 0 0 auto; gap: 3px; max-width: 35%; overflow: hidden; }
 .pi-chat__lesson-track i { background: var(--background-modifier-border); border-radius: 99px; display: block; height: 5px; min-width: 12px; }
 .pi-chat__lesson-track i.is-ready { background: var(--text-muted); }.pi-chat__lesson-track i.is-current { background: var(--interactive-accent); }.pi-chat__lesson-track i.is-mastered { background: var(--text-success); }
+.pi-chat__lesson-actions { align-items: center; display: flex; flex: 0 0 auto; gap: 9px; }
+.pi-chat__lesson-map-toggle { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-muted); cursor: pointer; display: inline-flex; font-size: 10px; gap: 4px; height: 22px; padding: 0 6px; }
+.pi-chat__lesson-map-toggle .pi-icon { height: 13px; width: 13px; }
+.pi-chat__lesson-map-toggle:hover, .pi-chat__lesson-map-toggle.is-open { background: var(--pi-hover); border-color: var(--pi-border); color: var(--text-normal); }
+.pi-chat__lesson-map { background: var(--background-secondary); border-bottom: 1px solid var(--pi-border); flex: 0 0 auto; max-height: 300px; overflow: auto; padding: 12px; }
+.pi-chat__lesson-map .pi-chat__markdown { margin: 0 auto; max-width: 700px; }
+.pi-chat__lesson-map .pi-chat__markdown svg { max-height: 270px; }
 .pi-chat__visual { background: var(--background-secondary); border: 1px solid var(--pi-border); border-radius: 10px; margin: 8px 12px; max-width: 480px; overflow: hidden; padding: 10px; }
 .pi-chat__visual header { display: grid; gap: 2px; margin-bottom: 8px; }.pi-chat__visual header span { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }.pi-chat__visual img { background: var(--background-primary); border-radius: 6px; display: block; max-height: 240px; max-width: 100%; width: 100%; }.pi-chat__visual button { margin-top: 8px; }
 .pi-chat__flashcards { background: var(--background-secondary); border: 1px solid var(--pi-border); border-radius: 10px; margin: 8px 12px; max-width: 480px; padding: 10px; }
@@ -244,8 +251,16 @@
 .pi-chat__quiz-question { font-weight: var(--font-semibold); margin-top: 5px; }
 .pi-chat__quiz-options { display: grid; gap: 6px; }
 .pi-chat__quiz-option { align-items: center; background: var(--background-primary); border: 1px solid var(--pi-border); border-radius: 7px; color: var(--text-normal); cursor: pointer; display: flex; gap: 8px; padding: 8px 9px; text-align: left; }
-.pi-chat__quiz-option:hover { background: var(--pi-hover); border-color: var(--interactive-accent); }
+.pi-chat__quiz-option:hover:not(:disabled) { background: var(--pi-hover); border-color: var(--interactive-accent); }
+.pi-chat__quiz-option:disabled { cursor: default; }
 .pi-chat__quiz-option-letter { color: var(--text-muted); font-size: 11px; font-weight: var(--font-semibold); }
+.pi-chat__quiz-option.is-correct { border-color: var(--text-success); background: color-mix(in srgb, var(--text-success) 12%, var(--background-primary)); }
+.pi-chat__quiz-option.is-correct .pi-chat__quiz-option-letter { color: var(--text-success); }
+.pi-chat__quiz-option.is-incorrect { border-color: var(--text-error); background: color-mix(in srgb, var(--text-error) 10%, var(--background-primary)); }
+.pi-chat__quiz-option.is-incorrect .pi-chat__quiz-option-letter { color: var(--text-error); }
+.pi-chat__quiz-feedback { font-size: var(--font-ui-smaller); margin: 8px 0 0; }
+.pi-chat__quiz-feedback.is-correct { color: var(--text-success); }
+.pi-chat__quiz-feedback.is-incorrect { color: var(--text-error); }
 .pi-chat__quiz-freeform { display: flex; gap: 7px; margin-top: 10px; }
 .pi-chat__quiz-freeform input { background: var(--background-primary); border: 1px solid var(--pi-border); border-radius: 7px; color: var(--text-normal); flex: 1; padding: 7px 9px; }
 .pi-chat__quiz-freeform button { background: var(--interactive-accent); border: 0; border-radius: 7px; color: var(--text-on-accent); cursor: pointer; padding: 7px 10px; }

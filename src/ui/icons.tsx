@@ -139,3 +139,13 @@ export function TrashIcon(props: IconProps): React.JSX.Element {
 		</PiIcon>
 	);
 }
+
+export function GraphIcon(props: IconProps): React.JSX.Element {
+	return (
+		<PiIcon {...props}>
+			<rect x="2" y="10" width="4" height="4" rx="1" />
+			<rect x="10" y="2" width="4" height="4" rx="1" />
+			<path d="M6 12h1.5A1.5 1.5 0 0 0 9 10.5V6h1" />
+		</PiIcon>
+	);
+}
