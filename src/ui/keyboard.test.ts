@@ -14,8 +14,12 @@ describe("isSendShortcut", () => {
 		expect(isSendShortcut({ key: "NumpadEnter", code: "NumpadEnter", metaKey: true })).toBe(true);
 	});
 
-	it("rejects plain Enter", () => {
-		expect(isSendShortcut({ key: "Enter" })).toBe(false);
+	it("accepts plain Enter", () => {
+		expect(isSendShortcut({ key: "Enter" })).toBe(true);
+	});
+
+	it("keeps Shift+Enter for a line break", () => {
+		expect(isSendShortcut({ key: "Enter", shiftKey: true })).toBe(false);
 	});
 
 	it("rejects composing input and shifted Enter", () => {

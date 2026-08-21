@@ -17,5 +17,5 @@ function isEnterKey(event: SendShortcutEvent): boolean {
 }
 
 function hasSendModifier(event: SendShortcutEvent): boolean {
-	return event.metaKey === true || event.ctrlKey === true;
+	return !event.shiftKey;
 }
