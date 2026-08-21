@@ -8,9 +8,16 @@
 # npm
 node_modules
 
-# Don't include the compiled main.js file in the repo.
-# They should be uploaded to GitHub releases instead.
+# Build artifacts — attach these to GitHub releases instead of committing them.
 main.js
+pi-runtime.cjs
+pdf.worker.mjs
+runtime-assets/
+
+# Scratch files
+.tmp-*
+load-error.txt
+.zcode/
 
 # Exclude sourcemaps
 *.map

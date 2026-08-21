@@ -8,6 +8,10 @@ export default tseslint.config(
 		languageOptions: {
 			globals: {
 				...globals.browser,
+				// Desktop-only plugin: the Obsidian renderer (Electron) exposes Node globals
+				// used by the runtime bridge (Buffer, NodeJS, process).
+				...globals.node,
+				NodeJS: "readonly",
 			},
 			parserOptions: {
 				projectService: {
@@ -30,5 +34,19 @@ export default tseslint.config(
 		"version-bump.mjs",
 		"versions.json",
 		"main.js",
+		// Build artifacts copied to the plugin folder on production builds.
+		"pi-runtime.cjs",
+		"pdf.worker.mjs",
+		"runtime-assets",
+		".tmp-*",
+		"load-error.txt",
 	]),
+	{
+		files: ["src/pi/piSessionService.ts"],
+		rules: {
+			// window.confirm gates destructive actions (chat deletion, note writes)
+			// deliberately: a synchronous yes/no is the safest prompt for mutations.
+			"no-alert": "off",
+		},
+	},
 );

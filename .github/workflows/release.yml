@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      - name: Verify tag matches manifest version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          if [ "$VERSION" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match manifest.json version ${VERSION}"
+            exit 1
+          fi
+
+      - name: Bundle the complete plugin folder
+        run: |
+          mkdir -p staging/pi-teacher/runtime-assets
+          cp main.js manifest.json styles.css pi-runtime.cjs pdf.worker.mjs staging/pi-teacher/
+          cp -r runtime-assets/. staging/pi-teacher/runtime-assets/
+          cd staging
+          zip -r "../pi-teacher-${GITHUB_REF_NAME}.zip" pi-teacher
+
+      - name: Create GitHub release with assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            main.js manifest.json styles.css pi-runtime.cjs pdf.worker.mjs \
+            "pi-teacher-${GITHUB_REF_NAME}.zip"
