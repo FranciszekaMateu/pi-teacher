@@ -78,29 +78,49 @@ describe("Pi RPC snapshot reducer", () => {
 
 	it("streams assistant messages token-by-token without duplicating them", () => {
 		const initial = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
-		const empty = { role: "assistant", content: [{ type: "text", text: "" }] } as never;
-		const partial = { role: "assistant", content: [{ type: "text", text: "Ho" }] } as never;
-		const more = { role: "assistant", content: [{ type: "text", text: "Hola" }] } as never;
 		const userEcho = { role: "user", content: "hola" } as never;
+		const finalMessage = { role: "assistant", content: [{ type: "text", text: "Hola" }] } as never;
 
 		const started = applyRpcEvent(initial, { type: "agent_start" });
 		const withUserEcho = applyRpcEvent(started, { type: "message_end", message: userEcho });
-		const streaming = applyRpcEvent(applyRpcEvent(applyRpcEvent(withUserEcho, { type: "message_start", message: empty }), { type: "message_update", message: partial }), { type: "message_update", message: more });
+		const streaming = applyRpcEvent(
+			applyRpcEvent(
+				applyRpcEvent(withUserEcho, { type: "message_start", message: { role: "assistant", content: [] } as never }),
+				{ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Ho" } },
+			),
+			{ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "la" } },
+		);
 
-		expect(streaming.streamingMessage).toEqual(more);
+		expect(streaming.streamingMessage).toEqual({ role: "assistant", content: [{ type: "text", text: "Hola" }] });
 		expect(streaming.messages).toEqual([userEcho]);
 		expect(streaming.isStreaming).toBe(true);
 
-		const finished = applyRpcEvent(streaming, { type: "message_end", message: more });
+		const finished = applyRpcEvent(streaming, { type: "message_end", message: finalMessage });
 		expect(finished.streamingMessage).toBeUndefined();
-		expect(finished.messages).toEqual([userEcho, more]);
+		expect(finished.messages).toEqual([userEcho, finalMessage]);
 	});
 
-	it("ignores streaming updates for non-assistant messages", () => {
+	it("accumulates text deltas at separate content indexes without shifting", () => {
 		const initial = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
-		const toolResult = { role: "toolResult", content: [] } as never;
-		const snapshot = applyRpcEvent(initial, { type: "message_update", message: toolResult });
-		expect(snapshot.streamingMessage).toBeUndefined();
-		expect(snapshot).toEqual(initial);
+		const afterStart = applyRpcEvent(initial, { type: "message_start", message: { role: "assistant", content: [] } as never });
+		const withThinking = applyRpcEvent(afterStart, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "reasoning…" } });
+		const withText = applyRpcEvent(withThinking, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 1, delta: "Hola" } });
+
+		const content = (withText.streamingMessage as { content: Array<{ type: string; text?: string }> }).content;
+		expect(content[1]).toEqual({ type: "text", text: "Hola" });
+		expect(readableText(withText.streamingMessage)).toBe("\nHola");
+	});
+
+	it("replaces the stream with the final message on the done delta", () => {
+		const initial = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
+		const finalMessage = { role: "assistant", content: [{ type: "text", text: "Listo" }] } as never;
+		const snapshot = applyRpcEvent(initial, { type: "message_update", assistantMessageEvent: { type: "done", reason: "stop", message: finalMessage } });
+		expect(snapshot.streamingMessage).toEqual(finalMessage);
 	});
 });
+
+function readableText(message: unknown): string {
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return "";
+	return content.map((part) => (part && (part as { type?: string }).type === "text" ? (part as { text?: string }).text ?? "" : "")).join("\n");
+}

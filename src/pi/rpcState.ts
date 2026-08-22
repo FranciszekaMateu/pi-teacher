@@ -41,6 +41,20 @@ interface RpcAgentEvent {
 	message?: AgentMessage;
 	toolCallId?: string;
 	toolName?: string;
+	assistantMessageEvent?: AssistantStreamDelta;
+}
+
+/**
+ * The RPC layer strips the accumulated partial message from message_update
+ * events (see toJsonEvent in pi-coding-agent) and forwards only the delta,
+ * so the transcript must be rebuilt token-by-token here.
+ */
+interface AssistantStreamDelta {
+	type: string;
+	contentIndex?: number;
+	delta?: string;
+	reason?: string;
+	message?: AgentMessage;
 }
 
 export function createRpcSnapshot(settings: RpcSnapshotSettings): RpcChatSnapshot {
@@ -73,10 +87,11 @@ export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): 
 		};
 	}
 	if (event.type === "message_start" && event.message?.role === "assistant") {
-		return { ...snapshot, streamingMessage: event.message };
+		// Deltas rebuild the content, so start from an empty assistant message.
+		return { ...snapshot, streamingMessage: { ...event.message, content: [] } };
 	}
-	if (event.type === "message_update" && event.message?.role === "assistant") {
-		return { ...snapshot, streamingMessage: event.message };
+	if (event.type === "message_update" && event.assistantMessageEvent) {
+		return { ...snapshot, streamingMessage: applyAssistantStreamDelta(snapshot.streamingMessage, event.assistantMessageEvent) };
 	}
 	if (event.type === "message_end" && event.message) {
 		const text = readTextContent(event.message);
@@ -108,4 +123,33 @@ function readTextContent(message: AgentMessage): string {
 		.filter((part): part is { type: "text"; text: string } => Boolean(part) && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string")
 		.map((part) => part.text)
 		.join("\n");
+}
+
+function emptyStreamingAssistant(): AgentMessage {
+	return { role: "assistant", content: [] } as unknown as AgentMessage;
+}
+
+/** Accumulates provider deltas into the streaming assistant message. */
+function applyAssistantStreamDelta(current: AgentMessage | undefined, delta: AssistantStreamDelta): AgentMessage {
+	if (delta.type === "done" && delta.message) return delta.message;
+	if (delta.type === "start" || !current) return emptyStreamingAssistant();
+	if (delta.type === "text_delta" && typeof delta.delta === "string") {
+		return withTextPart(current, delta.contentIndex ?? 0, (existing) => `${existing}${delta.delta}`);
+	}
+	if (delta.type === "text_end" && typeof delta.contentIndex === "number") {
+		// No-op: the accumulated text already matches the final content.
+		return current;
+	}
+	return current;
+}
+
+function withTextPart(message: AgentMessage, index: number, update: (existing: string) => string): AgentMessage {
+	const source = (message as { content?: unknown }).content;
+	const parts: Array<{ type?: string; text?: string }> = Array.isArray(source) ? [...(source as Array<{ type?: string; text?: string }>)] : [];
+	// Placeholders keep toolcall/thinking indexes from shifting text parts.
+	while (parts.length <= index) parts.push({ type: "text", text: "" });
+	const existing = parts[index];
+	const existingText = existing?.type === "text" && typeof existing.text === "string" ? existing.text : "";
+	parts[index] = { type: "text", text: update(existingText) };
+	return { ...message, content: parts } as unknown as AgentMessage;
 }
