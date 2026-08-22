@@ -75,4 +75,32 @@ describe("Pi RPC snapshot reducer", () => {
 
 		expect(snapshot.errorMessage).toBe("provider request failed");
 	});
+
+	it("streams assistant messages token-by-token without duplicating them", () => {
+		const initial = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
+		const empty = { role: "assistant", content: [{ type: "text", text: "" }] } as never;
+		const partial = { role: "assistant", content: [{ type: "text", text: "Ho" }] } as never;
+		const more = { role: "assistant", content: [{ type: "text", text: "Hola" }] } as never;
+		const userEcho = { role: "user", content: "hola" } as never;
+
+		const started = applyRpcEvent(initial, { type: "agent_start" });
+		const withUserEcho = applyRpcEvent(started, { type: "message_end", message: userEcho });
+		const streaming = applyRpcEvent(applyRpcEvent(applyRpcEvent(withUserEcho, { type: "message_start", message: empty }), { type: "message_update", message: partial }), { type: "message_update", message: more });
+
+		expect(streaming.streamingMessage).toEqual(more);
+		expect(streaming.messages).toEqual([userEcho]);
+		expect(streaming.isStreaming).toBe(true);
+
+		const finished = applyRpcEvent(streaming, { type: "message_end", message: more });
+		expect(finished.streamingMessage).toBeUndefined();
+		expect(finished.messages).toEqual([userEcho, more]);
+	});
+
+	it("ignores streaming updates for non-assistant messages", () => {
+		const initial = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
+		const toolResult = { role: "toolResult", content: [] } as never;
+		const snapshot = applyRpcEvent(initial, { type: "message_update", message: toolResult });
+		expect(snapshot.streamingMessage).toBeUndefined();
+		expect(snapshot).toEqual(initial);
+	});
 });

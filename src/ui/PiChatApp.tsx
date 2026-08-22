@@ -10,6 +10,7 @@ import { isSendShortcut } from "./keyboard";
 import { ChatContainerRoot, ScrollButton } from "./chatContainer";
 import { validateImageAttachment } from "../pi/imageAttachment";
 import { stripQuizMarkup } from "../pi/quizProtocol";
+import { stripIncompleteProtocolFence } from "../pi/streamingText";
 import { stripLessonMarkup, lessonGraphMermaid, type LessonState } from "../pi/lessonProtocol";
 import { stripVisualMarkup, type VisualProposal } from "../pi/visualProtocol";
 import { stripFlashcardsMarkup, type FlashcardProposal } from "../pi/flashcards";
@@ -293,7 +294,9 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 						) : null}
 						{snapshot.pendingVisual ? <VisualCard visual={snapshot.pendingVisual} t={t} onSave={() => void service.saveVisual(snapshot.pendingVisual!)} /> : null}
 						{snapshot.pendingFlashcards?.length ? <FlashcardCard cards={snapshot.pendingFlashcards} t={t} onSave={() => void service.saveFlashcards(snapshot.pendingFlashcards!)} /> : null}
-						{snapshot.isStreaming ? <ThinkingIndicator label={thinkingStatus(snapshot.isStreaming, snapshot.pendingToolCalls.length, t)} /> : null}
+						{snapshot.isStreaming && (!snapshot.streamingMessage || snapshot.pendingToolCalls.length > 0) ? (
+							<ThinkingIndicator label={thinkingStatus(snapshot.isStreaming, snapshot.pendingToolCalls.length, t)} />
+						) : null}
 					</>
 				)}
 				<ScrollButton label={t.scrollToLatest} />
@@ -650,7 +653,9 @@ function AttachedDocumentCard({ path, kind }: { path: string; kind: AttachedDocu
 function renderAssistantMessage(app: App, message: AssistantMessage): React.ReactNode {
 	return message.content.map((content, index) => {
 		if (content.type === "text") {
-			return <MarkdownBlock key={index} app={app} text={stripFlashcardsMarkup(stripVisualMarkup(stripLessonMarkup(stripQuizMarkup(content.text))))} />;
+			// The incomplete-fence strip keeps half-written protocol JSON out of
+			// the chat while the message is still streaming.
+			return <MarkdownBlock key={index} app={app} text={stripFlashcardsMarkup(stripVisualMarkup(stripLessonMarkup(stripQuizMarkup(stripIncompleteProtocolFence(content.text)))))} />;
 		}
 		return null;
 	});

@@ -72,6 +72,12 @@ export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): 
 			pendingToolCalls: snapshot.pendingToolCalls.filter((tool) => tool !== (event.toolName ?? event.toolCallId)),
 		};
 	}
+	if (event.type === "message_start" && event.message?.role === "assistant") {
+		return { ...snapshot, streamingMessage: event.message };
+	}
+	if (event.type === "message_update" && event.message?.role === "assistant") {
+		return { ...snapshot, streamingMessage: event.message };
+	}
 	if (event.type === "message_end" && event.message) {
 		const text = readTextContent(event.message);
 		const pendingQuiz = event.message.role === "assistant" ? extractQuiz(text) : undefined;
@@ -79,7 +85,7 @@ export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): 
 		const pendingFlashcards = event.message.role === "assistant" ? extractFlashcards(text, snapshot.mastery) : [];
 		const lesson = event.message.role === "assistant" ? extractLessonState(text) : undefined;
 		const projectedLesson = lesson ? projectLessonMastery(lesson, snapshot.mastery) : undefined;
-		return { ...snapshot, messages: [...snapshot.messages, event.message], pendingQuiz, ...(pendingVisual ? { pendingVisual } : {}), ...(pendingFlashcards.length ? { pendingFlashcards } : {}), ...(projectedLesson ? { lesson: projectedLesson } : {}) };
+		return { ...snapshot, messages: [...snapshot.messages, event.message], streamingMessage: undefined, pendingQuiz, ...(pendingVisual ? { pendingVisual } : {}), ...(pendingFlashcards.length ? { pendingFlashcards } : {}), ...(projectedLesson ? { lesson: projectedLesson } : {}) };
 	}
 	if (event.type === "agent_end") {
 		return {

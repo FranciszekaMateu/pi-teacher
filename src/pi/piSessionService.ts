@@ -64,6 +64,7 @@ export class PiSessionService {
 	private readonly masteryTitles: Record<string, string> = {};
 	private masteryLoaded = false;
 	private masterySaveTimer: ReturnType<typeof setTimeout> | null = null;
+	private streamNotifyTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(options: PiSessionServiceOptions) {
 		this.app = options.app;
@@ -316,6 +317,10 @@ export class PiSessionService {
 	}
 
 	dispose(): void {
+		if (this.streamNotifyTimer) {
+			clearTimeout(this.streamNotifyTimer);
+			this.streamNotifyTimer = null;
+		}
 		if (this.masterySaveTimer) {
 			clearTimeout(this.masterySaveTimer);
 			this.masterySaveTimer = null;
@@ -435,6 +440,28 @@ export class PiSessionService {
 		}
 		this.snapshot = applyRpcEvent(this.snapshot, event as never);
 		this.recordLessonTitles();
+		// Token updates can arrive dozens of times per second; render them on a
+		// trailing ~100ms throttle so React and the markdown renderer keep up.
+		if (event.type === "message_update") {
+			this.scheduleStreamNotify();
+			return;
+		}
+		this.flushStreamNotify();
+	}
+
+	private scheduleStreamNotify(): void {
+		if (this.streamNotifyTimer) return;
+		this.streamNotifyTimer = setTimeout(() => {
+			this.streamNotifyTimer = null;
+			this.notify();
+		}, 100);
+	}
+
+	private flushStreamNotify(): void {
+		if (this.streamNotifyTimer) {
+			clearTimeout(this.streamNotifyTimer);
+			this.streamNotifyTimer = null;
+		}
 		this.notify();
 	}
 
