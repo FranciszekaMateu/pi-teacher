@@ -25,26 +25,3 @@ export function extractLessonState(text: string): LessonState | undefined {
 }
 
 export function stripLessonMarkup(text: string): string { return text.replace(BLOCK, "").trim(); }
-
-/**
- * Renders the lesson dependency graph as a Mermaid flowchart with one class
- * per node status, so the learner can see the whole plan (not just the
- * progress track) at any point during the lesson.
- */
-export function lessonGraphMermaid(lesson: LessonState): string {
-	const lines = ["flowchart TD"];
-	for (const node of lesson.nodes) {
-		const label = node.title.replace(/["[\]]/g, "");
-		const suffix = node.status === "mastered" || node.status === "current" ? `:::${node.status}` : "";
-		lines.push(`  ${node.id}["${label}"]${suffix}`);
-	}
-	for (const node of lesson.nodes) {
-		for (const dependency of node.dependsOn ?? []) {
-			if (lesson.nodes.some((candidate) => candidate.id === dependency)) {
-				lines.push(`  ${dependency} --> ${node.id}`);
-			}
-		}
-	}
-	lines.push("  classDef mastered fill:#3f9d67,color:#fff", "  classDef current fill:#7a6cf0,color:#fff");
-	return lines.join("\n");
-}

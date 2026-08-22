@@ -147,9 +147,18 @@
 .pi-chat__lesson-map-toggle { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-muted); cursor: pointer; display: inline-flex; font-size: 10px; gap: 4px; height: 22px; padding: 0 6px; }
 .pi-chat__lesson-map-toggle .pi-icon { height: 13px; width: 13px; }
 .pi-chat__lesson-map-toggle:hover, .pi-chat__lesson-map-toggle.is-open { background: var(--pi-hover); border-color: var(--pi-border); color: var(--text-normal); }
-.pi-chat__lesson-map { background: var(--background-secondary); border-bottom: 1px solid var(--pi-border); flex: 0 0 auto; max-height: 300px; overflow: auto; padding: 12px; }
-.pi-chat__lesson-map .pi-chat__markdown { margin: 0 auto; max-width: 700px; }
-.pi-chat__lesson-map .pi-chat__markdown svg { max-height: 270px; }
+.pi-chat__lesson-map { background: var(--background-secondary); border-bottom: 1px solid var(--pi-border); flex: 0 0 auto; max-height: 320px; overflow: auto; padding: 14px 12px; }
+.pi-lesson-graph { display: block; margin: 0 auto; max-width: 100%; }
+.pi-lesson-graph__edge { stroke: var(--background-modifier-border); stroke-width: 1.5; }
+.pi-lesson-graph__arrow { fill: var(--background-modifier-border); }
+.pi-lesson-graph__node rect { fill: var(--background-primary); stroke: var(--pi-border); stroke-width: 1.2; }
+.pi-lesson-graph__node text { fill: var(--text-normal); font-size: 11px; paint-order: stroke; }
+.pi-lesson-graph__node.is-mastered rect { fill: color-mix(in srgb, var(--text-success) 14%, var(--background-primary)); stroke: var(--text-success); }
+.pi-lesson-graph__node.is-mastered text { fill: var(--text-success); }
+.pi-lesson-graph__node.is-current rect { fill: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary)); stroke: var(--interactive-accent); }
+.pi-lesson-graph__node.is-current text { fill: var(--text-normal); }
+.pi-lesson-graph__node.is-locked rect { stroke-dasharray: 4 3; }
+.pi-lesson-graph__node.is-locked text { fill: var(--text-faint); }
 .pi-chat__visual { background: var(--background-secondary); border: 1px solid var(--pi-border); border-radius: 10px; margin: 8px 12px; max-width: 480px; overflow: hidden; padding: 10px; }
 .pi-chat__visual header { display: grid; gap: 2px; margin-bottom: 8px; }.pi-chat__visual header span { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }.pi-chat__visual img { background: var(--background-primary); border-radius: 6px; display: block; max-height: 240px; max-width: 100%; width: 100%; }.pi-chat__visual button { margin-top: 8px; }
 .pi-chat__flashcards { background: var(--background-secondary); border: 1px solid var(--pi-border); border-radius: 10px; margin: 8px 12px; max-width: 480px; padding: 10px; }

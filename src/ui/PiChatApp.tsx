@@ -11,7 +11,7 @@ import { ChatContainerRoot, ScrollButton } from "./chatContainer";
 import { validateImageAttachment } from "../pi/imageAttachment";
 import { stripQuizMarkup } from "../pi/quizProtocol";
 import { stripIncompleteProtocolFence } from "../pi/streamingText";
-import { stripLessonMarkup, lessonGraphMermaid, type LessonState } from "../pi/lessonProtocol";
+import { stripLessonMarkup, type LessonState } from "../pi/lessonProtocol";
 import { stripVisualMarkup, type VisualProposal } from "../pi/visualProtocol";
 import { stripFlashcardsMarkup, type FlashcardProposal } from "../pi/flashcards";
 import { isVisibleChatMessage } from "./chatVisibility";
@@ -25,6 +25,7 @@ import { filterAndGroupChats } from "./historyPresentation";
 import { chatStrings, type ChatStrings, type UiLanguage } from "./strings";
 import { BookmarkIcon, CloseIcon, FileTextIcon, GraphIcon, ImageIcon, MessageIcon, PlusIcon, RefreshIcon, SearchIcon, SendIcon, StopIcon, TrashIcon } from "./icons";
 import { RuntimeControls } from "./runtimeControls";
+import { LessonGraph } from "./lessonGraph";
 
 interface PiChatAppProps {
 	app: App;
@@ -273,7 +274,7 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 					<strong>{t.errorPrefix}:</strong> {snapshot.errorMessage}
 				</div>
 			) : null}
-			{snapshot.lesson ? <LessonProgress lesson={snapshot.lesson} t={t} app={app} /> : null}
+			{snapshot.lesson ? <LessonProgress lesson={snapshot.lesson} t={t} /> : null}
 
 			<ChatContainerRoot className="pi-chat__messages" label={t.title}>
 				{!hasMessages ? (
@@ -412,7 +413,7 @@ function ThinkingIndicator({ label }: { label: string | null }): React.JSX.Eleme
 	);
 }
 
-function LessonProgress({ lesson, t, app }: { lesson: LessonState; t: ChatStrings; app: App }): React.JSX.Element {
+function LessonProgress({ lesson, t }: { lesson: LessonState; t: ChatStrings }): React.JSX.Element {
 	const [mapOpen, setMapOpen] = useState(false);
 	const mastered = lesson.nodes.filter((node) => node.status === "mastered").length;
 	const current = lesson.nodes.find((node) => node.status === "current");
@@ -444,7 +445,7 @@ function LessonProgress({ lesson, t, app }: { lesson: LessonState; t: ChatString
 			</section>
 			{mapOpen ? (
 				<div className="pi-chat__lesson-map">
-					<MarkdownBlock app={app} text={`\`\`\`mermaid\n${lessonGraphMermaid(lesson)}\n\`\`\``} />
+					<LessonGraph lesson={lesson} />
 				</div>
 			) : null}
 		</>
