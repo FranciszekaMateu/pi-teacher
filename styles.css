@@ -257,6 +257,7 @@
 
 /* Quiz */
 .pi-chat__quiz { background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: 10px; padding: 14px; }
+.pi-chat__message-content .pi-chat__quiz { margin: 10px 0; }
 .pi-chat__quiz-header { margin-bottom: 10px; }
 .pi-chat__quiz-tag { color: var(--text-muted); font-size: 10px; font-weight: var(--font-semibold); letter-spacing: .06em; text-transform: uppercase; }
 .pi-chat__quiz-question { font-weight: var(--font-semibold); margin-top: 5px; }

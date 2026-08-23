@@ -1,4 +1,4 @@
-import { extractQuiz, stripQuizMarkup } from "./quizProtocol";
+import { extractAllQuizzes, stripQuizMarkup } from "./quizProtocol";
 import type { LessonState } from "./lessonProtocol";
 
 type TranscriptMessage = { role?: string; content?: unknown };
@@ -17,10 +17,10 @@ export function buildKnowledgeNote(messages: TranscriptMessage[], chatId: string
 		const text = textFromContent(message.content);
 		const clean = stripQuizMarkup(text);
 		if (clean) knowledge.push(clean);
-		const quiz = extractQuiz(text);
-		if (!quiz) continue;
 		const answer = messages.slice(index + 1).find((candidate) => candidate.role === "user");
-		practice.push([`### ${quiz.question}`, ...quiz.options.map((option) => `- ${option}`), answer ? `\n**Respuesta de Fran:** ${titleFromContent(answer.content) || "—"}` : "\n**Respuesta de Fran:** pendiente"].join("\n"));
+		for (const quiz of extractAllQuizzes(text)) {
+			practice.push([`### ${quiz.question}`, ...quiz.options.map((option) => `- ${option}`), answer ? `\n**Respuesta de Fran:** ${titleFromContent(answer.content) || "—"}` : "\n**Respuesta de Fran:** pendiente"].join("\n"));
+		}
 	}
 
 	const lessonMarkdown = lesson ? ["## Ruta de aprendizaje", `**Fase:** ${lesson.phase}`, `**Objetivo:** ${lesson.goal}`, "", "### Plan", "```mermaid", lessonMermaid(lesson), "```", "", "### Mapa de conceptos", ...lesson.nodes.map((node) => `- [${node.status === "mastered" ? "x" : " "}] **${node.title}** — ${node.status}`), "", "### Fuentes", ...(lesson.sources.length ? lesson.sources.map((source) => `- ${source.kind === "vault" && source.path ? `[[${source.path}|${source.label}]]` : source.path ?? source.label}`) : ["- _Sin fuentes registradas todavía._"]), ""] : [];

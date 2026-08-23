@@ -39,6 +39,44 @@ export function extractQuiz(text: string): PendingQuiz | undefined {
 	return result;
 }
 
+/** Every valid quiz in the text, in order (a reply may carry several). */
+export function extractAllQuizzes(text: string): PendingQuiz[] {
+	const quizzes: PendingQuiz[] = [];
+	for (const match of text.matchAll(QUIZ_BLOCK)) {
+		const quiz = parseQuizSource(match[1]);
+		if (quiz) quizzes.push(quiz);
+	}
+	return quizzes;
+}
+
+export type QuizSegment = { type: "text"; text: string } | { type: "quiz"; quiz: PendingQuiz };
+
+/** Splits message text into prose and quiz segments so quizzes can render in place. */
+export function splitQuizSegments(text: string): QuizSegment[] {
+	const segments: QuizSegment[] = [];
+	let cursor = 0;
+	for (const match of text.matchAll(QUIZ_BLOCK)) {
+		if (match.index === undefined) continue;
+		const quiz = parseQuizSource(match[1]);
+		if (!quiz) continue;
+		const before = text.slice(cursor, match.index);
+		if (before.trim()) segments.push({ type: "text", text: before });
+		segments.push({ type: "quiz", quiz });
+		cursor = match.index + match[0].length;
+	}
+	const tail = text.slice(cursor);
+	if (tail.trim()) segments.push({ type: "text", text: tail });
+	return segments;
+}
+
+/** Matches a learner reply to a quiz option, for rendering historical answers. */
+export function matchQuizAnswer(quiz: PendingQuiz, answer: string | undefined): { selected: string; correct: boolean | null } | undefined {
+	if (!answer?.trim()) return undefined;
+	const normalized = answer.trim();
+	if (!quiz.options.some((option) => option.trim() === normalized)) return undefined;
+	return { selected: normalized, correct: typeof quiz.correctOption === "string" ? quiz.correctOption.trim() === normalized : null };
+}
+
 function parseQuizSource(source: string | undefined): PendingQuiz | undefined {
 	if (source === undefined) return undefined;
 	try {

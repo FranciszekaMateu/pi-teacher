@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractQuiz, shuffleOptions, stripQuizMarkup } from "./quizProtocol";
+import { extractAllQuizzes, extractQuiz, matchQuizAnswer, shuffleOptions, splitQuizSegments, stripQuizMarkup } from "./quizProtocol";
 
 describe("extractQuiz", () => {
 	it("parses a valid pi-quiz fenced block", () => {
@@ -30,6 +30,27 @@ describe("extractQuiz", () => {
 		const two = "Previo.\n```pi-quiz\n{\"question\":\"first\",\"options\":[\"A\"]}\n```\n```pi-quiz\n{\"question\":\"second\",\"options\":[\"B\"]}\n```\nFinal.";
 		expect(extractQuiz(two)).toMatchObject({ question: "second" });
 		expect(stripQuizMarkup(two)).toBe("Previo.\n\nFinal.");
+	});
+
+	it("extracts and splits every quiz segment in order", () => {
+		const text = "Intro.\n```pi-quiz\n{\"question\":\"q1\",\"options\":[\"A\",\"B\"],\"correctOption\":\"A\"}\n```\nMedio.\n```pi-quiz\n{\"question\":\"q2\",\"options\":[\"C\"]}\n```\nCierre.";
+		expect(extractAllQuizzes(text).map((quiz) => quiz.question)).toEqual(["q1", "q2"]);
+		const segments = splitQuizSegments(text);
+		expect(segments.map((segment) => segment.type)).toEqual(["text", "quiz", "text", "quiz", "text"]);
+		const first = segments[0];
+		expect(first?.type).toBe("text");
+		if (first?.type === "text") expect(first.text).toContain("Intro.");
+		const quizSegment = segments[1];
+		expect(quizSegment?.type).toBe("quiz");
+		if (quizSegment?.type === "quiz") expect(quizSegment.quiz.question).toBe("q1");
+	});
+
+	it("matches a historical reply to a quiz option for transcript rendering", () => {
+		const quiz = { question: "q", options: ["La precisión", "El rango"], allowFreeform: false, correctOption: "El rango" };
+		expect(matchQuizAnswer(quiz, "  El rango ")).toEqual({ selected: "El rango", correct: true });
+		expect(matchQuizAnswer(quiz, "La precisión")).toEqual({ selected: "La precisión", correct: false });
+		expect(matchQuizAnswer(quiz, "no sé, explícame")).toBeUndefined();
+		expect(matchQuizAnswer(quiz, undefined)).toBeUndefined();
 	});
 });
 

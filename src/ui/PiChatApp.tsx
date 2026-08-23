@@ -9,12 +9,12 @@ import type { ChatInputController } from "./ChatInputController";
 import { isSendShortcut } from "./keyboard";
 import { ChatContainerRoot, ScrollButton } from "./chatContainer";
 import { validateImageAttachment } from "../pi/imageAttachment";
-import { stripQuizMarkup, shuffleOptions } from "../pi/quizProtocol";
+import { splitQuizSegments, matchQuizAnswer, shuffleOptions } from "../pi/quizProtocol";
 import { stripIncompleteProtocolFence } from "../pi/streamingText";
 import { stripLessonMarkup, type LessonState } from "../pi/lessonProtocol";
 import { stripVisualMarkup, type VisualProposal } from "../pi/visualProtocol";
 import { stripFlashcardsMarkup, type FlashcardProposal } from "../pi/flashcards";
-import { isVisibleChatMessage } from "./chatVisibility";
+import { isVisibleChatMessage, nextUserMessageText } from "./chatVisibility";
 import { firstPastedImage } from "./clipboardImage";
 import { buildAttachedDocumentPrompt, parseAttachedDocumentPrompt, type AttachedDocument } from "./attachedDocument";
 import { loadActiveDocument } from "./activeDocument";
@@ -309,6 +309,8 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 								app={app}
 								message={message}
 								t={t}
+								nextUserText={nextUserMessageText(visibleMessages, index)}
+								pendingQuestion={snapshot.pendingQuiz?.question}
 								showCaret={snapshot.isStreaming && message === snapshot.streamingMessage && message.role === "assistant"}
 							/>
 						))}
@@ -528,6 +530,7 @@ function QuizCard({
 	explanation,
 	hint,
 	answer,
+	frozen,
 	app,
 	freeformValue,
 	onFreeformChange,
@@ -541,6 +544,8 @@ function QuizCard({
 	explanation?: string;
 	hint?: string;
 	answer?: { selected: string; correct: boolean | null };
+	/** Historical quiz rendered inside the transcript: no inputs, stays forever. */
+	frozen?: boolean;
 	app: App;
 	freeformValue: string;
 	onFreeformChange: (value: string) => void;
@@ -552,6 +557,7 @@ function QuizCard({
 	// compares option text, so order does not affect correctness.
 	const [displayOptions] = useState(() => shuffleOptions(options));
 	const answered = Boolean(answer);
+	const locked = answered || Boolean(frozen);
 
 	// Graded quizzes submit immediately — the right/wrong feedback lives in
 	// the snapshot (quizAnswer), so the card stays visible with the correction
@@ -590,7 +596,7 @@ function QuizCard({
 			{displayOptions.length > 0 ? (
 				<div className="pi-chat__quiz-options">
 					{displayOptions.map((option, index) => (
-						<button key={`${index}-${option}`} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={answered}>
+						<button key={`${index}-${option}`} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={locked}>
 							<span className="pi-chat__quiz-option-letter">{String.fromCharCode(65 + index)}</span>
 							<QuizText app={app} text={option} />
 						</button>
@@ -610,7 +616,7 @@ function QuizCard({
 					<QuizText app={app} text={explanation} />
 				</div>
 			) : null}
-			{allowFreeform && !answered ? (
+			{allowFreeform && !locked ? (
 				<div className="pi-chat__quiz-freeform">
 					<input
 						type="text"
@@ -633,7 +639,7 @@ function QuizCard({
 					</button>
 				</div>
 			) : null}
-			{allowFreeform && !answered && hint && hintShown ? (
+			{allowFreeform && !locked && hint && hintShown ? (
 				<div className="pi-chat__quiz-hint">
 					<QuizText app={app} text={hint} />
 				</div>
@@ -686,7 +692,7 @@ function QuizText({ app, text }: { app: App; text: string }): React.JSX.Element 
 	return <span className="pi-quiz-text" ref={ref} />;
 }
 
-function MessageRow({ app, message, t, showCaret }: { app: App; message: AgentMessage; t: ChatStrings; showCaret?: boolean }): React.JSX.Element {
+function MessageRow({ app, message, t, showCaret, nextUserText, pendingQuestion }: { app: App; message: AgentMessage; t: ChatStrings; showCaret?: boolean; nextUserText?: string; pendingQuestion?: string }): React.JSX.Element {
 	const { author, label } = describeRole(message.role, t);
 	return (
 		<article className={`pi-chat__message pi-chat__message--${message.role}`}>
@@ -698,7 +704,7 @@ function MessageRow({ app, message, t, showCaret }: { app: App; message: AgentMe
 					<span className="pi-chat__message-author">{label}</span>
 				</div>
 				<div className="pi-chat__message-content">
-					{renderMessageContent(app, message, t)}
+					{renderMessageContent(app, message, t, nextUserText, pendingQuestion)}
 					{showCaret ? <span className="pi-chat__stream-caret" aria-hidden="true" /> : null}
 				</div>
 			</div>
@@ -713,12 +719,12 @@ function describeRole(role: string, t: ChatStrings): { author: string; label: st
 	return { author: role.charAt(0).toUpperCase(), label: role };
 }
 
-function renderMessageContent(app: App, message: AgentMessage, t: ChatStrings): React.ReactNode {
+function renderMessageContent(app: App, message: AgentMessage, t: ChatStrings, nextUserText?: string, pendingQuestion?: string): React.ReactNode {
 	if (message.role === "user") {
 		return renderUserMessage(app, message, t);
 	}
 	if (message.role === "assistant") {
-		return renderAssistantMessage(app, message);
+		return renderAssistantMessage(app, message, t, nextUserText, pendingQuestion);
 	}
 	return renderToolResultMessage(app, message as ToolResultMessage);
 }
@@ -768,14 +774,34 @@ function AttachedDocumentCard({ path, kind }: { path: string; kind: AttachedDocu
 	);
 }
 
-function renderAssistantMessage(app: App, message: AssistantMessage): React.ReactNode {
-	return message.content.map((content, index) => {
-		if (content.type === "text") {
+function renderAssistantMessage(app: App, message: AssistantMessage, t: ChatStrings, nextUserText?: string, pendingQuestion?: string): React.ReactNode {
+	return message.content.flatMap((content, index) => {
+		if (content.type !== "text") return [];
+		return splitQuizSegments(content.text).map((segment, segmentIndex): React.ReactNode => {
+			const key = `${index}-${segmentIndex}`;
+			if (segment.type === "quiz") {
+				// The live pending quiz renders once, as the interactive card below.
+				if (segment.quiz.question === pendingQuestion) return null;
+				return (
+					<QuizCard
+						key={key}
+						{...segment.quiz}
+						app={app}
+						t={t}
+						frozen
+						answer={matchQuizAnswer(segment.quiz, nextUserText)}
+						freeformValue=""
+						onFreeformChange={() => undefined}
+						onAnswer={() => undefined}
+					/>
+				);
+			}
 			// The incomplete-fence strip keeps half-written protocol JSON out of
 			// the chat while the message is still streaming.
-			return <MarkdownBlock key={index} app={app} text={stripFlashcardsMarkup(stripVisualMarkup(stripLessonMarkup(stripQuizMarkup(stripIncompleteProtocolFence(content.text)))))} />;
-		}
-		return null;
+			const cleaned = stripFlashcardsMarkup(stripVisualMarkup(stripLessonMarkup(stripIncompleteProtocolFence(segment.text))));
+			if (!cleaned.trim()) return null;
+			return <MarkdownBlock key={key} app={app} text={cleaned} />;
+		});
 	});
 }
 
