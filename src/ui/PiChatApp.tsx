@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Component, MarkdownRenderer, type App } from "obsidian";
+import { Component, MarkdownRenderer, renderMath, type App } from "obsidian";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import type { ChatSnapshot, PiSessionService } from "../pi/piSessionService";
@@ -642,13 +642,48 @@ function QuizCard({
 	);
 }
 
-/** Quiz strings are model-generated markdown: render them (math included) like chat messages. */
+/**
+ * Quiz strings are model-generated text with LaTeX. MarkdownRenderer.render
+ * does not reliably typeset inline `$…$` math, so math segments go straight
+ * to Obsidian's MathJax wrapper (renderMath) and only prose uses the
+ * markdown pipeline.
+ */
 function QuizText({ app, text }: { app: App; text: string }): React.JSX.Element {
-	return (
-		<span className="pi-quiz-text">
-			<MarkdownBlock app={app} text={text} />
-		</span>
-	);
+	const ref = useRef<HTMLSpanElement | null>(null);
+	const componentRef = useRef<Component | null>(null);
+
+	useEffect(() => {
+		const el = ref.current;
+		if (!el || !text.trim()) {
+			return;
+		}
+		el.empty();
+		componentRef.current?.unload();
+		const component = new Component();
+		componentRef.current = component;
+		const segments = normalizeMathMarkdown(text).split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
+		void (async () => {
+			for (const segment of segments) {
+				if (!segment) continue;
+				const display = /^\$\$([\s\S]*)\$\$$/.exec(segment);
+				const inline = /^\$([^$\n]+)\$$/.exec(segment);
+				if (display?.[1] !== undefined) {
+					el.appendChild(renderMath(display[1].trim(), true));
+				} else if (inline?.[1] !== undefined) {
+					el.appendChild(renderMath(inline[1].trim(), false));
+				} else {
+					const container = el.createSpan();
+					await renderChatMarkdown(MarkdownRenderer, app, segment, container, component);
+				}
+			}
+		})();
+		return () => {
+			component.unload();
+			componentRef.current = null;
+		};
+	}, [app, text]);
+
+	return <span className="pi-quiz-text" ref={ref} />;
 }
 
 function MessageRow({ app, message, t, showCaret }: { app: App; message: AgentMessage; t: ChatStrings; showCaret?: boolean }): React.JSX.Element {

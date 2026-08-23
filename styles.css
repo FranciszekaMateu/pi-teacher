@@ -279,6 +279,8 @@
 .pi-quiz-text .pi-chat__markdown { display: inline; font-size: inherit; line-height: inherit; }
 .pi-quiz-text .pi-chat__markdown p { display: inline; margin: 0; }
 .pi-quiz-text .pi-chat__markdown .MathJax, .pi-quiz-text .pi-chat__markdown mjx-container { max-width: 100%; }
+.pi-quiz-text mjx-container { max-width: 100%; vertical-align: baseline; }
+.pi-quiz-text mjx-container[display="true"] { display: block; margin: 6px 0; }
 
 .pi-chat__quiz-feedback { font-size: var(--font-ui-smaller); margin: 8px 0 0; }
 .pi-chat__quiz-feedback.is-correct { color: var(--text-success); }
