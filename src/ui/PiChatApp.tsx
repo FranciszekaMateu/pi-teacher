@@ -311,7 +311,7 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 							/>
 						))}
 						{snapshot.pendingQuiz ? (
-							<QuizCard {...snapshot.pendingQuiz} answer={snapshot.quizAnswer} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} t={t} />
+							<QuizCard {...snapshot.pendingQuiz} answer={snapshot.quizAnswer} app={app} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} t={t} />
 						) : null}
 						{snapshot.pendingVisual ? <VisualCard visual={snapshot.pendingVisual} t={t} onSave={() => void service.saveVisual(snapshot.pendingVisual!)} /> : null}
 						{snapshot.pendingFlashcards?.length ? <FlashcardCard cards={snapshot.pendingFlashcards} t={t} onSave={() => void service.saveFlashcards(snapshot.pendingFlashcards!)} /> : null}
@@ -526,6 +526,7 @@ function QuizCard({
 	explanation,
 	hint,
 	answer,
+	app,
 	freeformValue,
 	onFreeformChange,
 	onAnswer,
@@ -538,6 +539,7 @@ function QuizCard({
 	explanation?: string;
 	hint?: string;
 	answer?: { selected: string; correct: boolean | null };
+	app: App;
 	freeformValue: string;
 	onFreeformChange: (value: string) => void;
 	onAnswer: (answer: string) => void;
@@ -579,27 +581,33 @@ function QuizCard({
 		<article className="pi-chat__quiz">
 			<header className="pi-chat__quiz-header">
 				<span className="pi-chat__quiz-tag">{t.quizTag}</span>
-				<div className="pi-chat__quiz-question">{question}</div>
+				<div className="pi-chat__quiz-question">
+					<QuizText app={app} text={question} />
+				</div>
 			</header>
 			{displayOptions.length > 0 ? (
 				<div className="pi-chat__quiz-options">
 					{displayOptions.map((option, index) => (
 						<button key={`${index}-${option}`} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={answered}>
 							<span className="pi-chat__quiz-option-letter">{String.fromCharCode(65 + index)}</span>
-							<span>{option}</span>
+							<QuizText app={app} text={option} />
 						</button>
 					))}
 				</div>
 			) : null}
 			{feedback ? (
-				<p
+				<div
 					className={answer?.correct === true ? "pi-chat__quiz-feedback is-correct" : answer?.correct === false ? "pi-chat__quiz-feedback is-incorrect" : "pi-chat__quiz-feedback"}
 					aria-live="polite"
 				>
-					{feedback}
-				</p>
+					<QuizText app={app} text={feedback} />
+				</div>
 			) : null}
-			{answered && explanation ? <p className="pi-chat__quiz-explanation">{explanation}</p> : null}
+			{answered && explanation ? (
+				<div className="pi-chat__quiz-explanation">
+					<QuizText app={app} text={explanation} />
+				</div>
+			) : null}
 			{allowFreeform && !answered ? (
 				<div className="pi-chat__quiz-freeform">
 					<input
@@ -623,8 +631,21 @@ function QuizCard({
 					</button>
 				</div>
 			) : null}
-			{allowFreeform && !answered && hint && hintShown ? <p className="pi-chat__quiz-hint">{hint}</p> : null}
+			{allowFreeform && !answered && hint && hintShown ? (
+				<div className="pi-chat__quiz-hint">
+					<QuizText app={app} text={hint} />
+				</div>
+			) : null}
 		</article>
+	);
+}
+
+/** Quiz strings are model-generated markdown: render them (math included) like chat messages. */
+function QuizText({ app, text }: { app: App; text: string }): React.JSX.Element {
+	return (
+		<span className="pi-quiz-text">
+			<MarkdownBlock app={app} text={text} />
+		</span>
 	);
 }
 

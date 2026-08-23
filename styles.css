@@ -270,6 +270,12 @@
 .pi-chat__quiz-option.is-incorrect { border-color: var(--text-error); background: color-mix(in srgb, var(--text-error) 10%, var(--background-primary)); }
 .pi-chat__quiz-option.is-incorrect .pi-chat__quiz-option-letter { color: var(--text-error); }
 .pi-chat__quiz-option.is-selected { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)); }
+/* Quiz text renders through the markdown pipeline so LaTeX matches the chat. */
+.pi-quiz-text { display: inline; min-width: 0; }
+.pi-quiz-text .pi-chat__markdown { display: inline; font-size: inherit; line-height: inherit; }
+.pi-quiz-text .pi-chat__markdown p { display: inline; margin: 0; }
+.pi-quiz-text .pi-chat__markdown .MathJax, .pi-quiz-text .pi-chat__markdown mjx-container { max-width: 100%; }
+
 .pi-chat__quiz-feedback { font-size: var(--font-ui-smaller); margin: 8px 0 0; }
 .pi-chat__quiz-feedback.is-correct { color: var(--text-success); }
 .pi-chat__quiz-feedback.is-incorrect { color: var(--text-error); }
