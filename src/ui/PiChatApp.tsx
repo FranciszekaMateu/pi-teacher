@@ -9,7 +9,7 @@ import type { ChatInputController } from "./ChatInputController";
 import { isSendShortcut } from "./keyboard";
 import { ChatContainerRoot, ScrollButton } from "./chatContainer";
 import { validateImageAttachment } from "../pi/imageAttachment";
-import { stripQuizMarkup } from "../pi/quizProtocol";
+import { stripQuizMarkup, shuffleOptions } from "../pi/quizProtocol";
 import { stripIncompleteProtocolFence } from "../pi/streamingText";
 import { stripLessonMarkup, type LessonState } from "../pi/lessonProtocol";
 import { stripVisualMarkup, type VisualProposal } from "../pi/visualProtocol";
@@ -23,7 +23,7 @@ import { thinkingStatus } from "./thinkingStatus";
 import { normalizeMathMarkdown } from "./mathMarkdown";
 import { filterAndGroupChats } from "./historyPresentation";
 import { chatStrings, type ChatStrings, type UiLanguage } from "./strings";
-import { BookmarkIcon, CloseIcon, FileTextIcon, GraphIcon, ImageIcon, MessageIcon, PlusIcon, RefreshIcon, SearchIcon, SendIcon, StopIcon, TrashIcon } from "./icons";
+import { BookmarkIcon, CloseIcon, FileTextIcon, GraphIcon, ImageIcon, MessageIcon, PlusIcon, RefreshIcon, SearchIcon, SendIcon, StopIcon, TargetIcon, TrashIcon } from "./icons";
 import { RuntimeControls } from "./runtimeControls";
 import { LessonGraph } from "./lessonGraph";
 
@@ -176,6 +176,26 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 	const hasMessages = visibleMessages.length > 0 || snapshot.pendingToolCalls.length > 0;
 	const historyGroups = useMemo(() => filterAndGroupChats(snapshot.chatHistory, historyQuery, new Date()), [snapshot.chatHistory, historyQuery]);
 
+	// Concepts the Practice button targets: quiz-tracked "learning" concepts
+	// first, then any lesson node that is not mastered yet.
+	const practiceTargets = useMemo(() => {
+		const lesson = snapshot.lesson;
+		if (!lesson) return [] as string[];
+		const titleOf = new Map(lesson.nodes.map((node) => [node.id, node.title]));
+		const learning = Object.entries(snapshot.mastery)
+			.filter(([, evidence]) => evidence.status === "learning")
+			.map(([id]) => titleOf.get(id) ?? id);
+		if (learning.length) return learning.slice(0, 8);
+		return lesson.nodes.filter((node) => node.status !== "mastered").map((node) => node.title).slice(0, 8);
+	}, [snapshot.lesson, snapshot.mastery]);
+
+	const practiceWeakConcepts = (): void => {
+		if (!practiceTargets.length || snapshot.isStreaming) return;
+		void service.sendPrompt(
+			`Practice request: quiz me again, one graded question at a time, on these concepts I have not mastered yet: ${practiceTargets.join("; ")}. Focus on the parts I previously got wrong.`,
+		);
+	};
+
 	return (
 		<div className="pi-chat">
 			<header className="pi-chat__header">
@@ -274,7 +294,7 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 					<strong>{t.errorPrefix}:</strong> {snapshot.errorMessage}
 				</div>
 			) : null}
-			{snapshot.lesson ? <LessonProgress lesson={snapshot.lesson} t={t} /> : null}
+			{snapshot.lesson ? <LessonProgress lesson={snapshot.lesson} t={t} onPractice={practiceWeakConcepts} canPractice={practiceTargets.length > 0 && !snapshot.isStreaming} /> : null}
 
 			<ChatContainerRoot className="pi-chat__messages" label={t.title}>
 				{!hasMessages ? (
@@ -413,7 +433,7 @@ function ThinkingIndicator({ label }: { label: string | null }): React.JSX.Eleme
 	);
 }
 
-function LessonProgress({ lesson, t }: { lesson: LessonState; t: ChatStrings }): React.JSX.Element {
+function LessonProgress({ lesson, t, onPractice, canPractice }: { lesson: LessonState; t: ChatStrings; onPractice: () => void; canPractice: boolean }): React.JSX.Element {
 	const [mapOpen, setMapOpen] = useState(false);
 	const mastered = lesson.nodes.filter((node) => node.status === "mastered").length;
 	const current = lesson.nodes.find((node) => node.status === "current");
@@ -431,6 +451,17 @@ function LessonProgress({ lesson, t }: { lesson: LessonState; t: ChatStrings }):
 							<i key={node.id} className={`is-${node.status}`} title={node.title} />
 						))}
 					</div>
+					<button
+						type="button"
+						className="pi-chat__lesson-map-toggle"
+						onClick={onPractice}
+						disabled={!canPractice}
+						title={t.practice}
+						aria-label={t.practice}
+					>
+						<TargetIcon />
+						<span aria-hidden="true">{t.practice}</span>
+					</button>
 					<button
 						type="button"
 						className={mapOpen ? "pi-chat__lesson-map-toggle is-open" : "pi-chat__lesson-map-toggle"}
@@ -492,6 +523,8 @@ function QuizCard({
 	options,
 	allowFreeform,
 	correctOption,
+	explanation,
+	hint,
 	freeformValue,
 	onFreeformChange,
 	onAnswer,
@@ -501,12 +534,18 @@ function QuizCard({
 	options: string[];
 	allowFreeform: boolean;
 	correctOption?: string;
+	explanation?: string;
+	hint?: string;
 	freeformValue: string;
 	onFreeformChange: (value: string) => void;
 	onAnswer: (answer: string) => void;
 	t: ChatStrings;
 }): React.JSX.Element {
 	const [feedback, setFeedback] = useState<{ selected: string; correct: boolean } | null>(null);
+	const [hintShown, setHintShown] = useState(false);
+	// Shuffle once per quiz so option position carries no signal; grading
+	// compares option text, so order does not affect correctness.
+	const [displayOptions] = useState(() => shuffleOptions(options));
 	const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
@@ -522,7 +561,7 @@ function QuizCard({
 		if (feedback) return;
 		if (typeof correctOption === "string" && correctOption.trim()) {
 			setFeedback({ selected: option, correct: option.trim() === correctOption.trim() });
-			submitTimerRef.current = setTimeout(() => onAnswer(option), 1800);
+			submitTimerRef.current = setTimeout(() => onAnswer(option), 2200);
 		} else {
 			onAnswer(option);
 		}
@@ -542,10 +581,10 @@ function QuizCard({
 				<span className="pi-chat__quiz-tag">{t.quizTag}</span>
 				<div className="pi-chat__quiz-question">{question}</div>
 			</header>
-			{options.length > 0 ? (
+			{displayOptions.length > 0 ? (
 				<div className="pi-chat__quiz-options">
-					{options.map((option, index) => (
-						<button key={index} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={Boolean(feedback)}>
+					{displayOptions.map((option, index) => (
+						<button key={`${index}-${option}`} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={Boolean(feedback)}>
 							<span className="pi-chat__quiz-option-letter">{String.fromCharCode(65 + index)}</span>
 							<span>{option}</span>
 						</button>
@@ -557,6 +596,7 @@ function QuizCard({
 					{feedback.correct ? t.quizCorrect : t.quizIncorrect(correctOption ?? "")}
 				</p>
 			) : null}
+			{feedback && explanation ? <p className="pi-chat__quiz-explanation">{explanation}</p> : null}
 			{allowFreeform ? (
 				<div className="pi-chat__quiz-freeform">
 					<input
@@ -570,11 +610,17 @@ function QuizCard({
 							}
 						}}
 					/>
+					{hint ? (
+						<button type="button" className="pi-chat__quiz-hint-toggle" onClick={() => setHintShown((value) => !value)} aria-expanded={hintShown}>
+							{t.quizHint}
+						</button>
+					) : null}
 					<button type="button" onClick={() => onAnswer(freeformValue.trim())} disabled={!freeformValue.trim()}>
 						{t.quizAnswer}
 					</button>
 				</div>
 			) : null}
+			{allowFreeform && hint && hintShown ? <p className="pi-chat__quiz-hint">{hint}</p> : null}
 		</article>
 	);
 }

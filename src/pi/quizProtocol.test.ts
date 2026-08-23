@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractQuiz, stripQuizMarkup } from "./quizProtocol";
+import { extractQuiz, shuffleOptions, stripQuizMarkup } from "./quizProtocol";
 
 describe("extractQuiz", () => {
 	it("parses a valid pi-quiz fenced block", () => {
@@ -12,6 +12,33 @@ describe("extractQuiz", () => {
 		expect(extractQuiz(text)).toMatchObject({ conceptId: "rounding", correctOption: "B" });
 		const invalid = "```pi-quiz\n{\"question\":\"x\",\"options\":[\"A\",\"B\"],\"conceptId\":\"rounding\",\"correctOption\":\"C\"}\n```";
 		expect(extractQuiz(invalid)?.correctOption).toBeUndefined();
+	});
+
+	it("parses explanation and hint when present and non-empty", () => {
+		const text = "```pi-quiz\n{\"question\":\"x\",\"options\":[\"A\",\"B\"],\"allowFreeform\":true,\"hint\":\"Think units\",\"explanation\":\"Because A is defined that way.\"}\n```";
+		expect(extractQuiz(text)).toMatchObject({ hint: "Think units", explanation: "Because A is defined that way." });
+	});
+
+	it("drops blank or non-string explanation/hint values", () => {
+		const blank = "```pi-quiz\n{\"question\":\"x\",\"options\":[\"A\"],\"allowFreeform\":true,\"hint\":\"  \",\"explanation\":42}\n```";
+		const quiz = extractQuiz(blank);
+		expect(quiz?.hint).toBeUndefined();
+		expect(quiz?.explanation).toBeUndefined();
+	});
+});
+
+describe("shuffleOptions", () => {
+	it("returns a permutation of the input without mutating it", () => {
+		const options = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
+		const original = [...options];
+		const shuffled = shuffleOptions(options);
+		expect(shuffled).toHaveLength(options.length);
+		for (const option of options) expect(shuffled).toContain(option);
+		expect(options).toEqual(original);
+	});
+
+	it("handles single-option lists", () => {
+		expect(shuffleOptions(["only"])).toEqual(["only"]);
 	});
 });
 

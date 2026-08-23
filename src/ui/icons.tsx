@@ -149,3 +149,13 @@ export function GraphIcon(props: IconProps): React.JSX.Element {
 		</PiIcon>
 	);
 }
+
+export function TargetIcon(props: IconProps): React.JSX.Element {
+	return (
+		<PiIcon {...props}>
+			<circle cx="8" cy="8" r="5.75" />
+			<circle cx="8" cy="8" r="2.75" />
+			<circle cx="8" cy="8" r="0.5" fill="currentColor" stroke="none" />
+		</PiIcon>
+	);
+}

@@ -49,6 +49,8 @@ export interface ChatStrings {
 	quizFreeformPlaceholder: string;
 	quizCorrect: string;
 	quizIncorrect: (answer: string) => string;
+	quizHint: string;
+	practice: string;
 	lessonMap: string;
 	visualKicker: string;
 	saveVisual: string;
@@ -103,6 +105,8 @@ const EN: ChatStrings = {
 	quizFreeformPlaceholder: "Type your answer…",
 	quizCorrect: "Correct!",
 	quizIncorrect: (answer) => `Not quite — the correct answer was “${answer}”`,
+	quizHint: "Hint",
+	practice: "Practice",
 	lessonMap: "Map",
 	visualKicker: "Proposed visual",
 	saveVisual: "Save visual",
@@ -157,6 +161,8 @@ const ES: ChatStrings = {
 	quizFreeformPlaceholder: "Escribe tu respuesta…",
 	quizCorrect: "¡Correcto!",
 	quizIncorrect: (answer) => `No exactamente — la respuesta correcta era «${answer}»`,
+	quizHint: "Pista",
+	practice: "Practicar",
 	lessonMap: "Mapa",
 	visualKicker: "Visual propuesto",
 	saveVisual: "Guardar visual",
