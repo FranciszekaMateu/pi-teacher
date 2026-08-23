@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRpcEvent, createRpcSnapshot } from "./rpcState";
+import { applyRpcEvent, createRpcSnapshot, hydrateRpcSnapshot } from "./rpcState";
 
 describe("Pi RPC snapshot reducer", () => {
 	it("uses the final agent messages and clears the streaming state", () => {
@@ -116,6 +116,31 @@ describe("Pi RPC snapshot reducer", () => {
 		const finalMessage = { role: "assistant", content: [{ type: "text", text: "Listo" }] } as never;
 		const snapshot = applyRpcEvent(initial, { type: "message_update", assistantMessageEvent: { type: "done", reason: "stop", message: finalMessage } });
 		expect(snapshot.streamingMessage).toEqual(finalMessage);
+	});
+
+	it("hydrates a reopened transcript: lesson, quiz, and answered quizzes", () => {
+		const base = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
+		const user = { role: "user", content: "enséñame punto flotante" } as never;
+		const answeredQuiz = { role: "assistant", content: [{ type: "text", text: "Pregunta.\n```pi-quiz\n{\"question\":\"q1\",\"options\":[\"A\"],\"allowFreeform\":false}\n```" }] } as never;
+		const answer = { role: "user", content: "A" } as never;
+		const lesson = { role: "assistant", content: [{ type: "text", text: "Plan.\n```pi-lesson\n{\"phase\":\"plan\",\"goal\":\"Punto flotante\",\"nodes\":[{\"id\":\"pf\",\"title\":\"Punto flotante\",\"status\":\"current\"}],\"sources\":[]}\n```" }] } as never;
+		const pendingQuiz = { role: "assistant", content: [{ type: "text", text: "Siguiente.\n```pi-quiz\n{\"question\":\"q2\",\"options\":[\"B\"],\"allowFreeform\":false,\"correctOption\":\"B\"}\n```" }] } as never;
+
+		const hydrated = hydrateRpcSnapshot(base, [user, answeredQuiz, answer, lesson, pendingQuiz]);
+
+		expect(hydrated.messages).toHaveLength(5);
+		expect(hydrated.lesson).toMatchObject({ phase: "plan", goal: "Punto flotante" });
+		// The early quiz was answered; only the last one stays pending.
+		expect(hydrated.pendingQuiz).toMatchObject({ question: "q2", correctOption: "B" });
+	});
+
+	it("clears a pending quiz when the learner replies", () => {
+		const base = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
+		const quiz = { role: "assistant", content: [{ type: "text", text: "```pi-quiz\n{\"question\":\"q\",\"options\":[\"A\"],\"allowFreeform\":false}\n```" }] } as never;
+		const withQuiz = applyRpcEvent(base, { type: "message_end", message: quiz });
+		expect(withQuiz.pendingQuiz).toMatchObject({ question: "q" });
+		const answered = applyRpcEvent(withQuiz, { type: "message_end", message: { role: "user", content: "A" } as never });
+		expect(answered.pendingQuiz).toBeUndefined();
 	});
 });
 

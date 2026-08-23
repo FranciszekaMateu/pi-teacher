@@ -70,6 +70,19 @@ export function createRpcSnapshot(settings: RpcSnapshotSettings): RpcChatSnapsho
 	};
 }
 
+/**
+ * Replays a stored transcript through the protocol reducer so a reopened
+ * chat recovers everything the live stream would have produced: the lesson
+ * plan (and its map), pending quizzes, visuals, flashcards, and message list.
+ */
+export function hydrateRpcSnapshot(base: RpcChatSnapshot, messages: AgentMessage[]): RpcChatSnapshot {
+	let snapshot = { ...base, messages: [] as AgentMessage[] };
+	for (const message of messages) {
+		snapshot = applyRpcEvent(snapshot, { type: "message_end", message });
+	}
+	return snapshot;
+}
+
 export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): RpcChatSnapshot {
 	if (event.type === "agent_start") {
 		return { ...snapshot, errorMessage: undefined, isStreaming: true };
@@ -94,6 +107,10 @@ export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): 
 		return { ...snapshot, streamingMessage: applyAssistantStreamDelta(snapshot.streamingMessage, event.assistantMessageEvent) };
 	}
 	if (event.type === "message_end" && event.message) {
+		if (event.message.role === "user") {
+			// A user reply supersedes any pending quiz (answered or bypassed).
+			return { ...snapshot, messages: [...snapshot.messages, event.message], pendingQuiz: undefined };
+		}
 		const text = readTextContent(event.message);
 		const pendingQuiz = event.message.role === "assistant" ? extractQuiz(text) : undefined;
 		const pendingVisual = event.message.role === "assistant" ? extractVisual(text) : undefined;

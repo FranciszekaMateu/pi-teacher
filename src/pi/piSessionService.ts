@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getPreferredThinkingLevel, type PiObsidianSettings } from "../settings";
-import { applyRpcEvent, createRpcSnapshot, type RpcChatSnapshot } from "./rpcState";
+import { applyRpcEvent, createRpcSnapshot, hydrateRpcSnapshot, type RpcChatSnapshot } from "./rpcState";
 import { resolveNodeExecutable } from "./nodeExecutable";
 import { withRpcTimeout } from "./rpcTimeout";
 import { parseChatHistory, readChatTranscript, type ChatHistoryItem } from "./chatHistory";
 import { sessionFileToDelete } from "./chatDeletion";
 import { buildKnowledgeNote, noteContentChanged, sourceChatId } from "./knowledgeNote";
-import { applyQuizAttempt, type MasteryByConcept } from "./learningProgress";
+import { applyQuizAttempt, projectLessonMastery, type MasteryByConcept } from "./learningProgress";
 import { buildMasteryFile, learnerProfilePrompt, mergeMastery, parseMasteryFile } from "./masteryStore";
 import type { VisualProposal } from "./visualProtocol";
 import { providedSourceUrls } from "./providedSources";
@@ -106,6 +106,11 @@ export class PiSessionService {
 			for (const [id, title] of Object.entries(titles)) this.masteryTitles[id] = title;
 			if (Object.keys(mastery).length) {
 				this.snapshot = { ...this.snapshot, mastery: mergeMastery(mastery, this.snapshot.mastery) };
+				// Re-project once mastery is known so previously mastered lesson
+				// nodes light up even in chats reopened from the transcript.
+				if (this.snapshot.lesson) {
+					this.snapshot = { ...this.snapshot, lesson: projectLessonMastery(this.snapshot.lesson, this.snapshot.mastery) };
+				}
 			}
 		} catch {
 			// No mastery file yet — nothing to calibrate with.
@@ -156,7 +161,9 @@ export class PiSessionService {
 			const child = this.child;
 			this.child = null;
 			try { child?.kill("SIGTERM"); } catch { /* process is already gone */ }
-			this.snapshot = { ...this.createSnapshot(), messages: transcript, chatHistory: this.snapshot.chatHistory, activeChatPath: chat.path };
+			// Replay the transcript through the protocol reducer so the lesson
+			// plan, pending quiz, visuals, and flashcards come back with the chat.
+			this.snapshot = { ...hydrateRpcSnapshot(this.createSnapshot(), transcript), chatHistory: this.snapshot.chatHistory, activeChatPath: chat.path };
 			this.notify();
 			await this.initialize();
 		} catch (error) {
