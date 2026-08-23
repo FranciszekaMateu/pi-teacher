@@ -673,13 +673,18 @@ function QuizText({ app, text }: { app: App; text: string }): React.JSX.Element 
 				if (!segment) continue;
 				const display = /^\$\$([\s\S]*)\$\$$/.exec(segment);
 				const inline = /^\$([^$\n]+)\$$/.exec(segment);
-				if (display?.[1] !== undefined) {
-					el.appendChild(renderMath(display[1].trim(), true));
-				} else if (inline?.[1] !== undefined) {
-					el.appendChild(renderMath(inline[1].trim(), false));
-				} else {
-					const container = el.createSpan();
-					await renderChatMarkdown(MarkdownRenderer, app, segment, container, component);
+				try {
+					if (display?.[1] !== undefined) {
+						el.appendChild(renderMath(display[1].trim(), true));
+					} else if (inline?.[1] !== undefined) {
+						el.appendChild(renderMath(inline[1].trim(), false));
+					} else {
+						const container = el.createSpan();
+						await renderChatMarkdown(MarkdownRenderer, app, segment, container, component);
+					}
+				} catch {
+					// Never blank the quiz text: fall back to the raw segment.
+					el.append(segment);
 				}
 			}
 		})();
