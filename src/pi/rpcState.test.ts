@@ -134,13 +134,25 @@ describe("Pi RPC snapshot reducer", () => {
 		expect(hydrated.pendingQuiz).toMatchObject({ question: "q2", correctOption: "B" });
 	});
 
-	it("clears a pending quiz when the learner replies", () => {
+	it("keeps the quiz card after the learner replies; only the teacher's next response replaces it", () => {
 		const base = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
 		const quiz = { role: "assistant", content: [{ type: "text", text: "```pi-quiz\n{\"question\":\"q\",\"options\":[\"A\"],\"allowFreeform\":false}\n```" }] } as never;
 		const withQuiz = applyRpcEvent(base, { type: "message_end", message: quiz });
 		expect(withQuiz.pendingQuiz).toMatchObject({ question: "q" });
-		const answered = applyRpcEvent(withQuiz, { type: "message_end", message: { role: "user", content: "A" } as never });
-		expect(answered.pendingQuiz).toBeUndefined();
+		const afterReply = applyRpcEvent(withQuiz, { type: "message_end", message: { role: "user", content: "A" } as never });
+		expect(afterReply.pendingQuiz).toMatchObject({ question: "q" });
+		const afterNextAnswer = applyRpcEvent(afterReply, { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Bien." }] } as never });
+		expect(afterNextAnswer.pendingQuiz).toBeUndefined();
+		expect(afterNextAnswer.quizAnswer).toBeUndefined();
+	});
+
+	it("does not resurrect a quiz when the transcript ends with the learner's reply", () => {
+		const base = createRpcSnapshot({ provider: "openai-codex", modelId: "gpt-5.6-luna", thinkingLevel: "high" });
+		const quiz = { role: "assistant", content: [{ type: "text", text: "```pi-quiz\n{\"question\":\"q\",\"options\":[\"A\"],\"allowFreeform\":false}\n```" }] } as never;
+		const hydrated = hydrateRpcSnapshot(base, [quiz, { role: "user", content: "A" } as never]);
+		expect(hydrated.pendingQuiz).toBeUndefined();
+		const endsWithQuiz = hydrateRpcSnapshot(base, [quiz]);
+		expect(endsWithQuiz.pendingQuiz).toMatchObject({ question: "q" });
 	});
 });
 

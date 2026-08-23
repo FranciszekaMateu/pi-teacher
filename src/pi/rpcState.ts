@@ -20,6 +20,8 @@ export interface RpcChatSnapshot {
 	sessionName?: string;
 	session?: { path: string };
 	pendingQuiz?: PendingQuiz;
+	/** Set once the learner answered the pending quiz; the card stays visible (with feedback) until the teacher's next response. */
+	quizAnswer?: { selected: string; correct: boolean | null };
 	pendingVisual?: VisualProposal;
 	pendingFlashcards?: FlashcardProposal[];
 	lesson?: LessonState;
@@ -80,6 +82,12 @@ export function hydrateRpcSnapshot(base: RpcChatSnapshot, messages: AgentMessage
 	for (const message of messages) {
 		snapshot = applyRpcEvent(snapshot, { type: "message_end", message });
 	}
+	// If the transcript ends with the learner's reply, the last quiz was
+	// answered (or bypassed) — do not resurrect it as pending.
+	const last = messages.at(-1);
+	if (last?.role === "user") {
+		return { ...snapshot, pendingQuiz: undefined, quizAnswer: undefined };
+	}
 	return snapshot;
 }
 
@@ -108,8 +116,9 @@ export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): 
 	}
 	if (event.type === "message_end" && event.message) {
 		if (event.message.role === "user") {
-			// A user reply supersedes any pending quiz (answered or bypassed).
-			return { ...snapshot, messages: [...snapshot.messages, event.message], pendingQuiz: undefined };
+			// A user reply does not hide the card: it stays as answered feedback
+			// until the teacher's next response replaces it.
+			return { ...snapshot, messages: [...snapshot.messages, event.message] };
 		}
 		const text = readTextContent(event.message);
 		const pendingQuiz = event.message.role === "assistant" ? extractQuiz(text) : undefined;
@@ -117,7 +126,7 @@ export function applyRpcEvent(snapshot: RpcChatSnapshot, event: RpcAgentEvent): 
 		const pendingFlashcards = event.message.role === "assistant" ? extractFlashcards(text, snapshot.mastery) : [];
 		const lesson = event.message.role === "assistant" ? extractLessonState(text) : undefined;
 		const projectedLesson = lesson ? projectLessonMastery(lesson, snapshot.mastery) : undefined;
-		return { ...snapshot, messages: [...snapshot.messages, event.message], streamingMessage: undefined, pendingQuiz, ...(pendingVisual ? { pendingVisual } : {}), ...(pendingFlashcards.length ? { pendingFlashcards } : {}), ...(projectedLesson ? { lesson: projectedLesson } : {}) };
+		return { ...snapshot, messages: [...snapshot.messages, event.message], streamingMessage: undefined, pendingQuiz, quizAnswer: undefined, ...(pendingVisual ? { pendingVisual } : {}), ...(pendingFlashcards.length ? { pendingFlashcards } : {}), ...(projectedLesson ? { lesson: projectedLesson } : {}) };
 	}
 	if (event.type === "agent_end") {
 		return {

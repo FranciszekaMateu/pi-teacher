@@ -12,7 +12,7 @@ import { withRpcTimeout } from "./rpcTimeout";
 import { parseChatHistory, readChatTranscript, type ChatHistoryItem } from "./chatHistory";
 import { sessionFileToDelete } from "./chatDeletion";
 import { buildKnowledgeNote, noteContentChanged, sourceChatId } from "./knowledgeNote";
-import { applyQuizAttempt, projectLessonMastery, type MasteryByConcept } from "./learningProgress";
+import { applyQuizAttempt, isCorrectQuizAnswer, projectLessonMastery, type MasteryByConcept } from "./learningProgress";
 import { buildMasteryFile, learnerProfilePrompt, mergeMastery, parseMasteryFile } from "./masteryStore";
 import type { VisualProposal } from "./visualProtocol";
 import { providedSourceUrls } from "./providedSources";
@@ -316,7 +316,9 @@ export class PiSessionService {
 	answerQuiz(answer: string): void {
 		const quiz = this.snapshot.pendingQuiz;
 		if (quiz) {
-			this.snapshot = { ...this.snapshot, mastery: applyQuizAttempt(this.snapshot.mastery, quiz, answer), pendingQuiz: undefined };
+			// The card stays visible with the answer + feedback until the
+			// teacher's next response replaces it.
+			this.snapshot = { ...this.snapshot, mastery: applyQuizAttempt(this.snapshot.mastery, quiz, answer), quizAnswer: { selected: answer, correct: isCorrectQuizAnswer(quiz, answer) } };
 			this.scheduleMasterySave();
 			this.notify();
 		}

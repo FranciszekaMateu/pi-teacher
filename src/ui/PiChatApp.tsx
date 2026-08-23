@@ -311,7 +311,7 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 							/>
 						))}
 						{snapshot.pendingQuiz ? (
-							<QuizCard {...snapshot.pendingQuiz} t={t} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} />
+							<QuizCard {...snapshot.pendingQuiz} answer={snapshot.quizAnswer} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} t={t} />
 						) : null}
 						{snapshot.pendingVisual ? <VisualCard visual={snapshot.pendingVisual} t={t} onSave={() => void service.saveVisual(snapshot.pendingVisual!)} /> : null}
 						{snapshot.pendingFlashcards?.length ? <FlashcardCard cards={snapshot.pendingFlashcards} t={t} onSave={() => void service.saveFlashcards(snapshot.pendingFlashcards!)} /> : null}
@@ -525,6 +525,7 @@ function QuizCard({
 	correctOption,
 	explanation,
 	hint,
+	answer,
 	freeformValue,
 	onFreeformChange,
 	onAnswer,
@@ -536,44 +537,43 @@ function QuizCard({
 	correctOption?: string;
 	explanation?: string;
 	hint?: string;
+	answer?: { selected: string; correct: boolean | null };
 	freeformValue: string;
 	onFreeformChange: (value: string) => void;
 	onAnswer: (answer: string) => void;
 	t: ChatStrings;
 }): React.JSX.Element {
-	const [feedback, setFeedback] = useState<{ selected: string; correct: boolean } | null>(null);
 	const [hintShown, setHintShown] = useState(false);
 	// Shuffle once per quiz so option position carries no signal; grading
 	// compares option text, so order does not affect correctness.
 	const [displayOptions] = useState(() => shuffleOptions(options));
-	const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const answered = Boolean(answer);
 
-	useEffect(() => {
-		return () => {
-			if (submitTimerRef.current) clearTimeout(submitTimerRef.current);
-		};
-	}, []);
-
-	// Graded quizzes show instant right/wrong feedback before the answer goes
-	// to the teacher, so the learner sees the correction even if the model
-	// takes a while to respond.
+	// Graded quizzes submit immediately — the right/wrong feedback lives in
+	// the snapshot (quizAnswer), so the card stays visible with the correction
+	// while the teacher prepares the next response.
 	const chooseOption = (option: string): void => {
-		if (feedback) return;
-		if (typeof correctOption === "string" && correctOption.trim()) {
-			setFeedback({ selected: option, correct: option.trim() === correctOption.trim() });
-			submitTimerRef.current = setTimeout(() => onAnswer(option), 2200);
-		} else {
-			onAnswer(option);
-		}
+		if (answered) return;
+		onAnswer(option);
 	};
 
 	const optionClass = (option: string): string => {
-		if (!feedback) return "pi-chat__quiz-option";
-		const isCorrectOption = option.trim() === correctOption?.trim();
+		const selected = answer?.selected;
+		if (!answer || selected === undefined) return "pi-chat__quiz-option";
+		const isCorrectOption = typeof correctOption === "string" && option.trim() === correctOption.trim();
 		if (isCorrectOption) return "pi-chat__quiz-option is-correct";
-		if (option === feedback.selected && !feedback.correct) return "pi-chat__quiz-option is-incorrect";
+		if (option === selected && answer.correct === false) return "pi-chat__quiz-option is-incorrect";
+		if (option === selected) return "pi-chat__quiz-option is-selected";
 		return "pi-chat__quiz-option";
 	};
+
+	const feedbackText = (): string | null => {
+		if (!answer) return null;
+		if (answer.correct === true) return t.quizCorrect;
+		if (answer.correct === false) return t.quizIncorrect(correctOption ?? answer.selected);
+		return t.quizAnswered(answer.selected);
+	};
+	const feedback = feedbackText();
 
 	return (
 		<article className="pi-chat__quiz">
@@ -584,7 +584,7 @@ function QuizCard({
 			{displayOptions.length > 0 ? (
 				<div className="pi-chat__quiz-options">
 					{displayOptions.map((option, index) => (
-						<button key={`${index}-${option}`} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={Boolean(feedback)}>
+						<button key={`${index}-${option}`} type="button" className={optionClass(option)} onClick={() => chooseOption(option)} disabled={answered}>
 							<span className="pi-chat__quiz-option-letter">{String.fromCharCode(65 + index)}</span>
 							<span>{option}</span>
 						</button>
@@ -592,12 +592,15 @@ function QuizCard({
 				</div>
 			) : null}
 			{feedback ? (
-				<p className={feedback.correct ? "pi-chat__quiz-feedback is-correct" : "pi-chat__quiz-feedback is-incorrect"} aria-live="polite">
-					{feedback.correct ? t.quizCorrect : t.quizIncorrect(correctOption ?? "")}
+				<p
+					className={answer?.correct === true ? "pi-chat__quiz-feedback is-correct" : answer?.correct === false ? "pi-chat__quiz-feedback is-incorrect" : "pi-chat__quiz-feedback"}
+					aria-live="polite"
+				>
+					{feedback}
 				</p>
 			) : null}
-			{feedback && explanation ? <p className="pi-chat__quiz-explanation">{explanation}</p> : null}
-			{allowFreeform ? (
+			{answered && explanation ? <p className="pi-chat__quiz-explanation">{explanation}</p> : null}
+			{allowFreeform && !answered ? (
 				<div className="pi-chat__quiz-freeform">
 					<input
 						type="text"
@@ -620,7 +623,7 @@ function QuizCard({
 					</button>
 				</div>
 			) : null}
-			{allowFreeform && hint && hintShown ? <p className="pi-chat__quiz-hint">{hint}</p> : null}
+			{allowFreeform && !answered && hint && hintShown ? <p className="pi-chat__quiz-hint">{hint}</p> : null}
 		</article>
 	);
 }

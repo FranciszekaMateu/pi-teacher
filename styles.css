@@ -269,6 +269,7 @@
 .pi-chat__quiz-option.is-correct .pi-chat__quiz-option-letter { color: var(--text-success); }
 .pi-chat__quiz-option.is-incorrect { border-color: var(--text-error); background: color-mix(in srgb, var(--text-error) 10%, var(--background-primary)); }
 .pi-chat__quiz-option.is-incorrect .pi-chat__quiz-option-letter { color: var(--text-error); }
+.pi-chat__quiz-option.is-selected { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)); }
 .pi-chat__quiz-feedback { font-size: var(--font-ui-smaller); margin: 8px 0 0; }
 .pi-chat__quiz-feedback.is-correct { color: var(--text-success); }
 .pi-chat__quiz-feedback.is-incorrect { color: var(--text-error); }
