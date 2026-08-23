@@ -395,9 +395,13 @@ export class PiSessionService {
 			throw error;
 		}
 		const data = state.data;
+		// Preserve protocol state hydrated from the transcript (lesson, pending
+		// quiz, visuals, flashcards); only refresh runtime + session fields.
 		this.snapshot = {
-			...this.createSnapshot(),
-			messages: this.snapshot.messages,
+			...this.snapshot,
+			provider: settings.provider,
+			modelId: settings.modelId,
+			thinkingLevel: getPreferredThinkingLevel(settings) as ThinkingLevel,
 			chatHistory: this.snapshot.chatHistory,
 			activeChatPath: this.resumeSessionPath ?? data?.sessionFile,
 			sessionId: data?.sessionId,
