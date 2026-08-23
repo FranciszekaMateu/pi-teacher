@@ -50,6 +50,11 @@ function titleFromContent(content: unknown): string {
 		: Array.isArray(content)
 			? content.filter((part): part is { type?: string; text?: string } => Boolean(part) && typeof part === "object").filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join(" ")
 			: "";
-	const normalized = text.replace(/<pi-attached-document\b[^>]*>[\s\S]*?<\/pi-attached-document>/gi, "").replace(/\s+/g, " ").trim();
+	// Keep in sync with stripInjectedContext in ui/attachedDocument.ts (not
+	// imported here to keep the pi/ layer free of UI dependencies).
+	const normalized = text
+		.replace(/<pi-attached-document\b[^>]*>[\s\S]*?<\/pi-attached-document>/gi, "")
+		.replace(/<pi-(learner-profile|user-provided-sources)>[\s\S]*?<\/pi-\1>/gi, "")
+		.replace(/\s+/g, " ").trim();
 	return normalized ? normalized.slice(0, 56) : "New lesson";
 }

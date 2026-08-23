@@ -16,4 +16,12 @@ describe("attached document prompt", () => {
 		expect(parseAttachedDocumentPrompt("Summarize this")).toEqual({ request: "Summarize this" });
 		expect(stripAttachedDocumentMarkup(buildAttachedDocumentPrompt(document, "Summarize"))).toBe("Summarize");
 	});
+	it("hides the attachment and injected context when the profile precedes it", () => {
+		const prompt = `<pi-learner-profile>\n- Mastered: something\n</pi-learner-profile>\n\n${buildAttachedDocumentPrompt(document, "Go ahead")}\n\n<pi-user-provided-sources>\n- https://example.com\n</pi-user-provided-sources>`;
+		expect(parseAttachedDocumentPrompt(prompt)).toEqual({ document: { path: document.path, kind: document.kind }, request: "Go ahead" });
+	});
+	it("strips injected context from plain prompts too", () => {
+		const prompt = "<pi-learner-profile>\n- Mastered: x\n</pi-learner-profile>\n\nTeach me integrals";
+		expect(parseAttachedDocumentPrompt(prompt)).toEqual({ request: "Teach me integrals" });
+	});
 });
