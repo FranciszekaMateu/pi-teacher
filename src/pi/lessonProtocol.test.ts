@@ -11,4 +11,9 @@ describe("lesson protocol", () => {
 		expect(extractLessonState("```pi-lesson\n{bad}\n``` ")).toBeUndefined();
 		expect(extractLessonState("```pi-lesson\n{\"phase\":\"hack\",\"goal\":\"x\",\"nodes\":[]}\n``` ")).toBeUndefined();
 	});
+	it("strips and parses every lesson block in a reply, keeping the latest state", () => {
+		const two = "Inicio.\n\n```pi-lesson\n{\"phase\":\"probe\",\"goal\":\"G\",\"nodes\":[],\"sources\":[]}\n```\n\n```pi-lesson\n{\"phase\":\"plan\",\"goal\":\"G\",\"nodes\":[],\"sources\":[]}\n```\n\nFin.";
+		expect(extractLessonState(two)).toMatchObject({ phase: "plan" });
+		expect(stripLessonMarkup(two)).toBe("Inicio.\n\nFin.");
+	});
 });

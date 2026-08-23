@@ -25,6 +25,12 @@ describe("extractQuiz", () => {
 		expect(quiz?.hint).toBeUndefined();
 		expect(quiz?.explanation).toBeUndefined();
 	});
+
+	it("strips every quiz block and keeps the last valid quiz", () => {
+		const two = "Previo.\n```pi-quiz\n{\"question\":\"first\",\"options\":[\"A\"]}\n```\n```pi-quiz\n{\"question\":\"second\",\"options\":[\"B\"]}\n```\nFinal.";
+		expect(extractQuiz(two)).toMatchObject({ question: "second" });
+		expect(stripQuizMarkup(two)).toBe("Previo.\n\nFinal.");
+	});
 });
 
 describe("shuffleOptions", () => {

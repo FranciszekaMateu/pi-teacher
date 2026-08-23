@@ -10,10 +10,10 @@ export interface PendingQuiz {
 	hint?: string;
 }
 
-const QUIZ_BLOCK = /```pi-quiz\s*\n([\s\S]*?)\n```/i;
+const QUIZ_BLOCK = /```pi-quiz\s*\n([\s\S]*?)\n```/gi;
 
 export function stripQuizMarkup(text: string): string {
-	return text.replace(QUIZ_BLOCK, "").trim();
+	return text.replace(QUIZ_BLOCK, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Fisher–Yates display-order shuffle: grading compares option text, not position. */
@@ -29,10 +29,17 @@ export function shuffleOptions(options: string[]): string[] {
 	return shuffled;
 }
 
+/** The model may emit several blocks in one reply; the last valid one wins. */
 export function extractQuiz(text: string): PendingQuiz | undefined {
-	const match = QUIZ_BLOCK.exec(text);
-	if (!match) return undefined;
-	const source = match[1];
+	let result: PendingQuiz | undefined;
+	for (const match of text.matchAll(QUIZ_BLOCK)) {
+		const quiz = parseQuizSource(match[1]);
+		if (quiz) result = quiz;
+	}
+	return result;
+}
+
+function parseQuizSource(source: string | undefined): PendingQuiz | undefined {
 	if (source === undefined) return undefined;
 	try {
 		const parsed = JSON.parse(source) as Partial<PendingQuiz>;

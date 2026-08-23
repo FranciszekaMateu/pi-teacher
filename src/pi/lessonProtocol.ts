@@ -4,12 +4,21 @@ export interface LessonNode { id: string; title: string; status: LessonNodeStatu
 export interface LessonSource { label: string; path?: string; kind: "vault" | "external"; }
 export interface LessonState { phase: LessonPhase; goal: string; nodes: LessonNode[]; sources: LessonSource[]; }
 
-const BLOCK = /```pi-lesson\s*\n([\s\S]*?)\n```/i;
+const BLOCK = /```pi-lesson\s*\n([\s\S]*?)\n```/gi;
 const PHASES = new Set<LessonPhase>(["probe", "plan", "teach", "practice", "review", "complete"]);
 const STATUSES = new Set<LessonNodeStatus>(["locked", "ready", "current", "mastered"]);
 
+/** The model may emit several blocks per reply (probe → plan in one message); the last valid one wins. */
 export function extractLessonState(text: string): LessonState | undefined {
-	const source = BLOCK.exec(text)?.[1];
+	let result: LessonState | undefined;
+	for (const match of text.matchAll(BLOCK)) {
+		const lesson = parseLessonSource(match[1]);
+		if (lesson) result = lesson;
+	}
+	return result;
+}
+
+function parseLessonSource(source: string | undefined): LessonState | undefined {
 	if (!source) return undefined;
 	try {
 		const parsed = JSON.parse(source) as Partial<LessonState>;
@@ -24,4 +33,4 @@ export function extractLessonState(text: string): LessonState | undefined {
 	} catch { return undefined; }
 }
 
-export function stripLessonMarkup(text: string): string { return text.replace(BLOCK, "").trim(); }
+export function stripLessonMarkup(text: string): string { return text.replace(BLOCK, "").replace(/\n{3,}/g, "\n\n").trim(); }
