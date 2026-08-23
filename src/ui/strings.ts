@@ -52,6 +52,7 @@ export interface ChatStrings {
 	quizAnswered: (answer: string) => string;
 	quizHint: string;
 	practice: string;
+	practiceRequestLabel: string;
 	lessonMap: string;
 	visualKicker: string;
 	saveVisual: string;
@@ -109,6 +110,7 @@ const EN: ChatStrings = {
 	quizAnswered: (answer) => `You answered: “${answer}”`,
 	quizHint: "Hint",
 	practice: "Practice",
+	practiceRequestLabel: "Targeted practice",
 	lessonMap: "Map",
 	visualKicker: "Proposed visual",
 	saveVisual: "Save visual",
@@ -166,6 +168,7 @@ const ES: ChatStrings = {
 	quizAnswered: (answer) => `Respondiste: «${answer}»`,
 	quizHint: "Pista",
 	practice: "Practicar",
+	practiceRequestLabel: "Práctica dirigida",
 	lessonMap: "Mapa",
 	visualKicker: "Visual propuesto",
 	saveVisual: "Guardar visual",

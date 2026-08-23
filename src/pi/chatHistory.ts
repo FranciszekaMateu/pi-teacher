@@ -54,7 +54,8 @@ function titleFromContent(content: unknown): string {
 	// imported here to keep the pi/ layer free of UI dependencies).
 	const normalized = text
 		.replace(/<pi-attached-document\b[^>]*>[\s\S]*?<\/pi-attached-document>/gi, "")
-		.replace(/<pi-(learner-profile|user-provided-sources)>[\s\S]*?<\/pi-\1>/gi, "")
+		.replace(/<pi-(learner-profile|user-provided-sources|practice)>[\s\S]*?<\/pi-\1>/gi, "")
+		.replace(/^Practice request: quiz me again[^\n]*$/m, "")
 		.replace(/\s+/g, " ").trim();
 	return normalized ? normalized.slice(0, 56) : "New lesson";
 }

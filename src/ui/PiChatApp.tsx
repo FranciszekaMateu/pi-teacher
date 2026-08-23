@@ -191,8 +191,10 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 
 	const practiceWeakConcepts = (): void => {
 		if (!practiceTargets.length || snapshot.isStreaming) return;
+		// Wrapped in a tag so the transcript shows a friendly chip instead of
+		// the raw internal instruction (same pattern as the learner profile).
 		void service.sendPrompt(
-			`Practice request: quiz me again, one graded question at a time, on these concepts I have not mastered yet: ${practiceTargets.join("; ")}. Focus on the parts I previously got wrong.`,
+			`<pi-practice>\nquiz me again, one graded question at a time, on these concepts I have not mastered yet: ${practiceTargets.join("; ")}. Focus on the parts I previously got wrong.\n</pi-practice>`,
 		);
 	};
 
@@ -661,7 +663,7 @@ function MessageRow({ app, message, t, showCaret }: { app: App; message: AgentMe
 					<span className="pi-chat__message-author">{label}</span>
 				</div>
 				<div className="pi-chat__message-content">
-					{renderMessageContent(app, message)}
+					{renderMessageContent(app, message, t)}
 					{showCaret ? <span className="pi-chat__stream-caret" aria-hidden="true" /> : null}
 				</div>
 			</div>
@@ -676,9 +678,9 @@ function describeRole(role: string, t: ChatStrings): { author: string; label: st
 	return { author: role.charAt(0).toUpperCase(), label: role };
 }
 
-function renderMessageContent(app: App, message: AgentMessage): React.ReactNode {
+function renderMessageContent(app: App, message: AgentMessage, t: ChatStrings): React.ReactNode {
 	if (message.role === "user") {
-		return renderUserMessage(app, message);
+		return renderUserMessage(app, message, t);
 	}
 	if (message.role === "assistant") {
 		return renderAssistantMessage(app, message);
@@ -686,19 +688,29 @@ function renderMessageContent(app: App, message: AgentMessage): React.ReactNode 
 	return renderToolResultMessage(app, message as ToolResultMessage);
 }
 
-function renderUserMessage(app: App, message: UserMessage): React.ReactNode {
-	if (typeof message.content === "string") return renderUserText(app, message.content);
+function renderUserMessage(app: App, message: UserMessage, t: ChatStrings): React.ReactNode {
+	if (typeof message.content === "string") return renderUserText(app, message.content, t);
 	return message.content.map((content, index) => {
-		if (content.type === "text") return <React.Fragment key={index}>{renderUserText(app, content.text)}</React.Fragment>;
+		if (content.type === "text") return <React.Fragment key={index}>{renderUserText(app, content.text, t)}</React.Fragment>;
 		return <img key={index} className="pi-chat__message-image" src={`data:${content.mimeType};base64,${content.data}`} alt="Attached image" />;
 	});
 }
 
-function renderUserText(app: App, text: string): React.ReactNode {
-	const { document, request } = parseAttachedDocumentPrompt(text);
+function renderUserText(app: App, text: string, t: ChatStrings): React.ReactNode {
+	const { document, practice, request } = parseAttachedDocumentPrompt(text);
 	return (
 		<>
 			{document ? <AttachedDocumentCard path={document.path} kind={document.kind} /> : null}
+			{practice ? (
+				<div className="pi-chat__message-attachment pi-chat__message-attachment--practice">
+					<span className="pi-chat__message-attachment-icon" aria-hidden="true">
+						<TargetIcon />
+					</span>
+					<span className="pi-chat__message-attachment-text">
+						<strong>{t.practiceRequestLabel}</strong>
+					</span>
+				</div>
+			) : null}
 			{request ? <MarkdownBlock app={app} text={request} /> : null}
 		</>
 	);

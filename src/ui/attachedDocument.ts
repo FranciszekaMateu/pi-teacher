@@ -14,11 +14,13 @@ const CLOSE = "</pi-attached-document>";
 // Not anchored: the service may prepend injected context (learner profile,
 // provided sources) before the attachment block in the same message.
 const ATTACHED_DOCUMENT = /<pi-attached-document\s+path="([^"]+)"\s+kind="(Markdown note|PDF text extract)">[\s\S]*?<\/pi-attached-document>\s*/;
-const INJECTED_CONTEXT = /<pi-(learner-profile|user-provided-sources)>[\s\S]*?<\/pi-\1>\s*/g;
+const INJECTED_CONTEXT = /<pi-(learner-profile|user-provided-sources|practice)>[\s\S]*?<\/pi-\1>\s*/g;
+// Practice requests sent before the tag existed; still stripped for clean history.
+const LEGACY_PRACTICE = /^Practice request: quiz me again[^\n]*$/m;
 
 /** Removes context blocks the service injects into user messages; they are for the model, not the transcript UI. */
 export function stripInjectedContext(prompt: string): string {
-	return prompt.replace(INJECTED_CONTEXT, "").trim();
+	return prompt.replace(INJECTED_CONTEXT, "").replace(LEGACY_PRACTICE, "").trim();
 }
 
 export function buildAttachedDocumentPrompt(document: AttachedDocument, request: string): string {
@@ -26,11 +28,12 @@ export function buildAttachedDocumentPrompt(document: AttachedDocument, request:
 }
 
 /** Separates private injected context from the small UI attachment preview. */
-export function parseAttachedDocumentPrompt(prompt: string): { document?: AttachedDocumentPreview; request: string } {
+export function parseAttachedDocumentPrompt(prompt: string): { document?: AttachedDocumentPreview; practice?: boolean; request: string } {
+	const practice = /<pi-practice>[\s\S]*?<\/pi-practice>/.test(prompt) || LEGACY_PRACTICE.test(prompt);
 	const clean = stripInjectedContext(prompt);
 	const match = ATTACHED_DOCUMENT.exec(clean);
-	if (!match || match.index === undefined) return { request: clean };
-	return { document: { path: match[1] ?? "", kind: (match[2] ?? "Markdown note") as AttachedDocument["kind"] }, request: clean.slice(match.index + match[0].length).trim() };
+	if (!match || match.index === undefined) return { ...(practice ? { practice } : {}), request: clean };
+	return { ...(practice ? { practice } : {}), document: { path: match[1] ?? "", kind: (match[2] ?? "Markdown note") as AttachedDocument["kind"] }, request: clean.slice(match.index + match[0].length).trim() };
 }
 
 export function stripAttachedDocumentMarkup(prompt: string): string {

@@ -24,4 +24,10 @@ describe("attached document prompt", () => {
 		const prompt = "<pi-learner-profile>\n- Mastered: x\n</pi-learner-profile>\n\nTeach me integrals";
 		expect(parseAttachedDocumentPrompt(prompt)).toEqual({ request: "Teach me integrals" });
 	});
+	it("flags tagged and legacy practice requests without showing the instruction", () => {
+		const tagged = "<pi-practice>\nquiz me again on flux\n</pi-practice>";
+		expect(parseAttachedDocumentPrompt(tagged)).toEqual({ practice: true, request: "" });
+		const legacy = "Practice request: quiz me again, one graded question at a time, on these concepts I have not mastered yet: flux";
+		expect(parseAttachedDocumentPrompt(legacy)).toEqual({ practice: true, request: "" });
+	});
 });
