@@ -3,6 +3,7 @@ import { PDFParse } from "pdf-parse";
 import { MAX_PDF_PAGES_PER_READ } from "../pi/pdfPolicy";
 import type { AttachedDocument } from "./attachedDocument";
 import { configurePdfWorkerForObsidian } from "./pdfWorker";
+import { latestMarkdownNote } from "./latestMarkdownNote";
 
 const MAX_ATTACHMENT_CHARS = 60_000;
 const MAX_PDF_BYTES = 30 * 1024 * 1024;
@@ -16,6 +17,17 @@ export async function loadActiveDocument(app: App): Promise<AttachedDocument> {
 	if (file.extension.toLowerCase() !== "pdf") throw new Error("The active file must be a Markdown note or a PDF.");
 	if (file.stat.size > MAX_PDF_BYTES) throw new Error("The active PDF exceeds the 30 MiB safety limit.");
 	return { path: file.path, kind: "PDF text extract", content: await extractPdfText(app, file) };
+}
+
+/**
+ * Loads the Markdown note the learner worked on most recently. This powers
+ * the "quiz me on my last note" shortcut without asking the model to inspect
+ * the vault (which it must never do on its own).
+ */
+export async function loadLatestMarkdownNote(app: App): Promise<AttachedDocument> {
+	const file = latestMarkdownNote(app.vault.getMarkdownFiles());
+	if (!file) throw new Error("No Markdown notes are available to use for a quiz.");
+	return { path: file.path, kind: "Markdown note", content: limit(await app.vault.read(file)) };
 }
 
 async function extractPdfText(app: App, file: TFile): Promise<string> {

@@ -6,6 +6,13 @@ import { extractVisual, type VisualProposal } from "./visualProtocol";
 import { extractFlashcards, type FlashcardProposal } from "./flashcards";
 import type { ChatHistoryItem } from "./chatHistory";
 
+/** A model Pi has both discovered and authenticated in its shared runtime. */
+export interface PiRuntimeModel {
+	provider: string;
+	id: string;
+	name: string;
+}
+
 export interface RpcChatSnapshot {
 	messages: AgentMessage[];
 	streamingMessage?: AgentMessage;
@@ -15,6 +22,7 @@ export interface RpcChatSnapshot {
 	provider: string;
 	modelId: string;
 	thinkingLevel: ThinkingLevel;
+	availableModels: PiRuntimeModel[];
 	sessionId?: string;
 	sessionPath?: string;
 	sessionName?: string;
@@ -67,6 +75,7 @@ export function createRpcSnapshot(settings: RpcSnapshotSettings): RpcChatSnapsho
 		provider: settings.provider,
 		modelId: settings.modelId,
 		thinkingLevel: settings.thinkingLevel,
+		availableModels: [],
 		chatHistory: [],
 		mastery: emptyMastery(),
 	};

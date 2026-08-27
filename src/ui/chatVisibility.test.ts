@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { isVisibleChatMessage, nextUserMessageText } from "./chatVisibility";
 
 describe("isVisibleChatMessage", () => {
-	it("shows only the learner and final teacher messages", () => {
+	it("shows learner messages and teacher messages with visible content", () => {
 		expect(isVisibleChatMessage({ role: "user" } as never)).toBe(true);
-		expect(isVisibleChatMessage({ role: "assistant" } as never)).toBe(true);
+		expect(isVisibleChatMessage({ role: "assistant", content: [{ type: "text", text: "Explicación" }] } as never)).toBe(true);
+		expect(isVisibleChatMessage({ role: "assistant", content: [{ type: "thinking", thinking: "Preparando el quiz" }] } as never)).toBe(false);
+		expect(isVisibleChatMessage({ role: "assistant", content: [{ type: "text", text: "```pi-lesson\n{\"phase\":\"probe\"}\n```" }] } as never)).toBe(false);
+		expect(isVisibleChatMessage({ role: "assistant", content: [{ type: "text", text: "```pi-quiz\n{\"question\":\"¿Cuál?\",\"options\":[\"A\"]}\n```" }] } as never)).toBe(true);
 		expect(isVisibleChatMessage({ role: "toolResult" } as never)).toBe(false);
 	});
 });

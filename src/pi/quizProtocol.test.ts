@@ -14,6 +14,11 @@ describe("extractQuiz", () => {
 		expect(extractQuiz(invalid)?.correctOption).toBeUndefined();
 	});
 
+	it("normalizes option whitespace before matching the correct answer", () => {
+		const text = "```pi-quiz\n{\"question\":\"x\",\"options\":[\" A \",\"B\"],\"allowFreeform\":false,\"correctOption\":\" A \"}\n```";
+		expect(extractQuiz(text)).toMatchObject({ options: ["A", "B"], correctOption: "A" });
+	});
+
 	it("parses explanation and hint when present and non-empty", () => {
 		const text = "```pi-quiz\n{\"question\":\"x\",\"options\":[\"A\",\"B\"],\"allowFreeform\":true,\"hint\":\"Think units\",\"explanation\":\"Because A is defined that way.\"}\n```";
 		expect(extractQuiz(text)).toMatchObject({ hint: "Think units", explanation: "Because A is defined that way." });

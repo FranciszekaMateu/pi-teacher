@@ -13,11 +13,14 @@ import { parseChatHistory, readChatTranscript, type ChatHistoryItem } from "./ch
 import { sessionFileToDelete } from "./chatDeletion";
 import { buildKnowledgeNote, noteContentChanged, sourceChatId } from "./knowledgeNote";
 import { applyQuizAttempt, isCorrectQuizAnswer, projectLessonMastery, type MasteryByConcept } from "./learningProgress";
+import { matchQuizAnswer } from "./quizProtocol";
 import { buildMasteryFile, learnerProfilePrompt, mergeMastery, parseMasteryFile } from "./masteryStore";
 import type { VisualProposal } from "./visualProtocol";
 import { providedSourceUrls } from "./providedSources";
 import { teacherSystemPrompt } from "./teacherPrompt";
 import { buildFlashcardAppend, type FlashcardProposal } from "./flashcards";
+import { flashcardDeck } from "./flashcardDeck";
+import { parsePiRuntimeModels, preferredPiRuntimeModel } from "./runtimeModels";
 
 export type ChatSnapshot = RpcChatSnapshot;
 type SnapshotListener = (snapshot: ChatSnapshot) => void;
@@ -27,7 +30,14 @@ type RpcResponse = {
 	id?: number;
 	command?: string;
 	success: boolean;
-	data?: { sessionId?: string; sessionFile?: string; sessionName?: string };
+	data?: {
+		sessionId?: string;
+		sessionFile?: string;
+		sessionName?: string;
+		model?: { provider?: string; id?: string };
+		thinkingLevel?: ThinkingLevel;
+		models?: unknown;
+	};
 	error?: string;
 };
 
@@ -65,6 +75,8 @@ export class PiSessionService {
 	private masteryLoaded = false;
 	private masterySaveTimer: ReturnType<typeof setTimeout> | null = null;
 	private streamNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Stays locked from prompt preflight until agent_end; the RPC ack is early. */
+	private promptInFlight = false;
 
 	constructor(options: PiSessionServiceOptions) {
 		this.app = options.app;
@@ -244,9 +256,10 @@ export class PiSessionService {
 	}
 
 	async saveFlashcards(cards: FlashcardProposal[]): Promise<void> {
-		const target = flashcardDeckPath(this.snapshot.lesson?.sources.map((source) => source.path).filter((path): path is string => Boolean(path)) ?? []);
+		const deck = flashcardDeck(this.snapshot.lesson?.sources ?? []);
+		const target = deck.path;
 		const existing = this.app.vault.getAbstractFileByPath(target);
-		const content = existing instanceof TFile ? await this.app.vault.read(existing) : `#flashcards/${target.includes("Métodos Numéricos") ? "metodos-numericos" : "pi-teacher"}\n`;
+		const content = existing instanceof TFile ? await this.app.vault.read(existing) : `#flashcards/${deck.tag}\n`;
 		const next = buildFlashcardAppend(content, cards);
 		if (next === content) { new Notice("Those flashcards are already in the deck."); return; }
 		if (!window.confirm(`Add ${cards.length} flashcard proposal(s) to Spaced Repetition?\n\n${target}`)) return;
@@ -260,41 +273,58 @@ export class PiSessionService {
 	}
 
 	async sendPrompt(prompt: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void> {
-		await this.initialize();
+		if (this.promptInFlight) return;
 		if (this.snapshot.isStreaming) {
 			this.setError("The agent is already responding.");
 			return;
 		}
+		this.promptInFlight = true;
 		this.snapshot = { ...this.snapshot, errorMessage: undefined };
 		this.notify();
-		const sourceUrls = providedSourceUrls(prompt);
-		const sourceContext = sourceUrls.length ? `\n\n<pi-user-provided-sources>\n${sourceUrls.map((url) => `- ${url}`).join("\n")}\n</pi-user-provided-sources>` : "";
-		// Calibrate the first prompt of a fresh lesson with the persisted learner profile.
-		const isFirstPrompt = this.snapshot.messages.length === 0 && !this.snapshot.streamingMessage;
-		const profileContext = isFirstPrompt ? learnerProfilePrompt(mergeMastery(this.storedMastery, this.snapshot.mastery), this.masteryTitles) : null;
-		const message = `${profileContext ? `${profileContext}\n\n` : ""}${prompt}${sourceContext}`;
 		try {
+			await this.initialize();
+			if (this.snapshot.isStreaming) {
+				this.promptInFlight = false;
+				this.setError("The agent is already responding.");
+				return;
+			}
+			const sourceUrls = providedSourceUrls(prompt);
+			const sourceContext = sourceUrls.length ? `\n\n<pi-user-provided-sources>\n${sourceUrls.map((url) => `- ${url}`).join("\n")}\n</pi-user-provided-sources>` : "";
+			// Calibrate the first prompt of a fresh lesson with the persisted learner profile.
+			const isFirstPrompt = this.snapshot.messages.length === 0 && !this.snapshot.streamingMessage;
+			const profileContext = isFirstPrompt ? learnerProfilePrompt(mergeMastery(this.storedMastery, this.snapshot.mastery), this.masteryTitles) : null;
+			const message = `${profileContext ? `${profileContext}\n\n` : ""}${prompt}${sourceContext}`;
 			await this.sendCommand("prompt", { message, ...(images?.length ? { images } : {}) });
 		} catch (error) {
+			this.promptInFlight = false;
 			this.setError(toSafeError(error));
 		}
 	}
 
-	async updateRuntimeSettings(modelId: string, thinkingLevel: ThinkingLevel): Promise<void> {
+	async updateRuntimeSettings(provider: string, modelId: string, thinkingLevel: ThinkingLevel): Promise<void> {
 		if (this.snapshot.isStreaming) {
 			this.setError("Wait for the current response before changing model or effort.");
 			return;
 		}
-		const settings = this.getSettings();
-		settings.modelId = modelId;
-		settings.thinkingLevel = thinkingLevel;
-		await this.saveSettings();
-		const child = this.child;
-		this.child = null;
-		try { child?.kill("SIGTERM"); } catch { /* process is already gone */ }
-		this.snapshot = this.createSnapshot();
-		this.notify();
-		await this.initialize();
+		try {
+			const settings = this.getSettings();
+			const selected = this.snapshot.availableModels.find((model) => model.provider === provider && model.id === modelId);
+			if (!selected) {
+				this.setError("That model is no longer available in Pi. Configure it there and reopen the chat.");
+				return;
+			}
+			await this.initialize();
+			await this.sendCommand("set_model", { provider, modelId });
+			await this.sendCommand("set_thinking_level", { level: thinkingLevel });
+			settings.provider = provider;
+			settings.modelId = modelId;
+			settings.thinkingLevel = thinkingLevel;
+			await this.saveSettings();
+			this.snapshot = { ...this.snapshot, provider, modelId, thinkingLevel };
+			this.notify();
+		} catch (error) {
+			this.setError(toSafeError(error));
+		}
 	}
 
 	abort(): void {
@@ -303,6 +333,7 @@ export class PiSessionService {
 
 	async newSession(): Promise<void> {
 		try {
+			this.promptInFlight = false;
 			this.resumeSessionPath = null;
 			await this.initialize();
 			await this.sendCommand("new_session");
@@ -317,8 +348,17 @@ export class PiSessionService {
 		const quiz = this.snapshot.pendingQuiz;
 		if (quiz) {
 			// The card stays visible with the answer + feedback until the
-			// teacher's next response replaces it.
-			this.snapshot = { ...this.snapshot, mastery: applyQuizAttempt(this.snapshot.mastery, quiz, answer), quizAnswer: { selected: answer, correct: isCorrectQuizAnswer(quiz, answer) } };
+			// teacher's next response replaces it. Only exact option matches
+			// are graded locally; freeform text (and anything that is not an
+			// option of this quiz) stays ungraded — the teacher evaluates it
+			// in its reply and mastery only records gradable answers.
+			const optionAnswer = matchQuizAnswer(quiz, answer);
+			const isGradableOption = optionAnswer !== undefined && typeof quiz.correctOption === "string" && quiz.correctOption.trim().length > 0;
+			this.snapshot = {
+				...this.snapshot,
+				mastery: isGradableOption ? applyQuizAttempt(this.snapshot.mastery, quiz, answer) : this.snapshot.mastery,
+				quizAnswer: optionAnswer ?? { selected: answer, correct: isCorrectQuizAnswer(quiz, answer) === true ? true : null },
+			};
 			this.scheduleMasterySave();
 			this.notify();
 		}
@@ -355,15 +395,12 @@ export class PiSessionService {
 		}
 		const args = [
 			runtimePath,
-			"--provider", settings.provider,
-			"--model", settings.modelId,
-			"--thinking", getPreferredThinkingLevel(settings),
 			"--tools", "read,grep,find,ls",
 			"--append-system-prompt", "You are a patient, adaptive teacher. Teach via Probe → Plan → Teach → Practice → Review. First diagnose prerequisite understanding with one graded multiple-choice question at a time; treat ‘I don’t know’ as useful data. Then plan a dependency path and teach one reasoning step at a time. Quiz periodically, use answers to recalibrate, and never rush ahead. The chat only shows the quiz card from your most recent response: while you are waiting for an answer, re-emit the pi-quiz block in every response (verbatim or adjusted) — never ask the learner to answer \"the previous question\" without re-emitting it, and never drop a quiz to prose. Use only source material the learner explicitly provides (attached vault documents, pasted material, or URLs they explicitly give); never discover or search for external sources yourself. Treat attached vault material as primary, and label claims based on it as `Fuente proporcionada por Fran`; identify an inference plainly when evidence is absent. Never narrate tool calls, tool results, private reasoning, or implementation details. For every completed probe, plan update, teaching-node update, practice result, review, or completion, append one fenced pi-lesson block containing strict JSON (at most one block per response — only the latest state; never two in a row): {\"phase\":\"probe|plan|teach|practice|review|complete\",\"goal\":string,\"nodes\":[{\"id\":string,\"title\":string,\"status\":\"locked|ready|current|mastered\",\"dependsOn\"?:string[]}],\"sources\":[{\"label\":string,\"path\"?:string,\"kind\":\"vault|external\"}]}. Keep it truthful and compact. When you want an interactive quiz, append one fenced pi-quiz block containing strict JSON: {\"question\":string,\"options\":string[],\"allowFreeform\":boolean,\"conceptId\"?:string,\"correctOption\"?:string,\"explanation\"?:string,\"hint\"?:string}. For a concept where a visual materially helps, append a pi-visual fenced JSON block {\"title\":string,\"svg\":string} with a self-contained inert SVG (no scripts, external URLs, event handlers, or foreignObject); at most one proposal per response. For multiple-choice quizzes, include conceptId and exact correctOption, plus a concise explanation (1-3 sentences) of why the correct option is right and, when useful, the misconception behind the most tempting distractor; the explanation is shown only after the learner answers. For freeform quizzes you may include a short hint that nudges without revealing the answer. Those metadata fields are hidden from the learner UI until used. Do not include an answer for freeform quizzes.",
 			"--session-dir", join(vaultRoot, ".pi", "agent", "sessions"),
 			"--append-system-prompt", teacherSystemPrompt(),
 			...(this.resumeSessionPath ? ["--session", this.resumeSessionPath] : []),
-			"--no-extensions",
+			...(settings.loadTrustedPiExtensions ? [] : ["--no-extensions"]),
 		];
 		const nodeExecutable = resolveNodeExecutable(process.env.PI_OBSIDIAN_NODE_PATH, process.platform, existsSync);
 		console.debug("[Pi Teacher] Starting Node RPC runtime", { nodeExecutable, runtimePath });
@@ -371,7 +408,6 @@ export class PiSessionService {
 			cwd: vaultRoot,
 			env: {
 				...process.env,
-				PI_CODING_AGENT_DIR: join(vaultRoot, ".pi", "agent"),
 				PI_PACKAGE_DIR: join(pluginDir, "runtime-assets"),
 			},
 			stdio: ["pipe", "pipe", "pipe"],
@@ -392,25 +428,40 @@ export class PiSessionService {
 		let state: RpcResponse;
 		try {
 			state = await withRpcTimeout(this.sendCommand("get_state"), 12000, "get_state");
+			const modelsResponse = await withRpcTimeout(this.sendCommand("get_available_models"), 12000, "get_available_models");
+			const availableModels = parsePiRuntimeModels(modelsResponse.data?.models);
+			const preferred = preferredPiRuntimeModel(availableModels, settings.provider, settings.modelId);
+			if (preferred) {
+				await withRpcTimeout(this.sendCommand("set_model", { provider: preferred.provider, modelId: preferred.id }), 12000, "set_model");
+				await withRpcTimeout(this.sendCommand("set_thinking_level", { level: getPreferredThinkingLevel(settings) }), 12000, "set_thinking_level");
+				state = await withRpcTimeout(this.sendCommand("get_state"), 12000, "get_state");
+			}
+			this.snapshot = this.withRuntimeState(state, availableModels);
 		} catch (error) {
 			try { child.kill("SIGTERM"); } catch { /* process is already gone */ }
 			throw error;
 		}
+		this.notify();
+	}
+
+	private withRuntimeState(state: RpcResponse, availableModels: ChatSnapshot["availableModels"]): ChatSnapshot {
+		const settings = this.getSettings();
 		const data = state.data;
+		const model = data?.model;
 		// Preserve protocol state hydrated from the transcript (lesson, pending
 		// quiz, visuals, flashcards); only refresh runtime + session fields.
-		this.snapshot = {
+		return {
 			...this.snapshot,
-			provider: settings.provider,
-			modelId: settings.modelId,
-			thinkingLevel: getPreferredThinkingLevel(settings) as ThinkingLevel,
+			provider: model?.provider ?? settings.provider,
+			modelId: model?.id ?? settings.modelId,
+			thinkingLevel: data?.thinkingLevel ?? getPreferredThinkingLevel(settings),
+			availableModels,
 			chatHistory: this.snapshot.chatHistory,
 			activeChatPath: this.resumeSessionPath ?? data?.sessionFile,
 			sessionId: data?.sessionId,
 			sessionPath: data?.sessionFile,
 			sessionName: data?.sessionName,
 		};
-		this.notify();
 	}
 
 	private handleStdout(chunk: Buffer): void {
@@ -448,6 +499,7 @@ export class PiSessionService {
 			return;
 		}
 		const event = message as RpcEvent;
+		if (event.type === "agent_end") this.promptInFlight = false;
 		if (event.type === "agent_end" && typeof event.errorMessage === "string") {
 			console.error("[Pi Teacher] Agent turn failed", event.errorMessage);
 		}
@@ -500,6 +552,7 @@ export class PiSessionService {
 	}
 
 	private handleProcessFailure(error: Error): void {
+		this.promptInFlight = false;
 		this.rejectPending(error);
 		this.setError(toSafeError(error));
 	}
@@ -526,10 +579,6 @@ export class PiSessionService {
 	private notify(): void {
 		for (const listener of this.listeners) listener(this.snapshot);
 	}
-}
-
-function flashcardDeckPath(sources: string[]): string {
-	return sources.some((source) => /métodos numéricos/i.test(source)) ? "05 - Resources/Flashcards/Métodos Numéricos flashcards.md" : "05 - Resources/Flashcards/Pi Teacher flashcards.md";
 }
 
 function getVaultBasePath(app: App): string {

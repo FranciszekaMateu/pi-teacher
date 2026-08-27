@@ -83,12 +83,15 @@ function parseQuizSource(source: string | undefined): PendingQuiz | undefined {
 		const parsed = JSON.parse(source) as Partial<PendingQuiz>;
 		if (typeof parsed.question !== "string" || !parsed.question.trim()) return undefined;
 		if (!Array.isArray(parsed.options) || !parsed.options.every((option) => typeof option === "string")) return undefined;
+		const options = parsed.options.map((option) => option.trim()).filter(Boolean);
+		const normalizedCorrectOption = typeof parsed.correctOption === "string" ? parsed.correctOption.trim() : "";
+		const correctOption = options.find((option) => option === normalizedCorrectOption);
 		return {
 			question: parsed.question.trim(),
-			options: parsed.options.map((option) => option.trim()).filter(Boolean),
+			options,
 			allowFreeform: parsed.allowFreeform !== false,
 			...(typeof parsed.conceptId === "string" && parsed.conceptId.trim() ? { conceptId: parsed.conceptId.trim() } : {}),
-			...(typeof parsed.correctOption === "string" && parsed.options.includes(parsed.correctOption) ? { correctOption: parsed.correctOption } : {}),
+			...(correctOption ? { correctOption } : {}),
 			...(typeof parsed.explanation === "string" && parsed.explanation.trim() ? { explanation: parsed.explanation.trim() } : {}),
 			...(typeof parsed.hint === "string" && parsed.hint.trim() ? { hint: parsed.hint.trim() } : {}),
 		};

@@ -101,6 +101,8 @@ export interface PiObsidianSettings {
 	codexAccountId: string;
 	codexTokenExpiresAt: number;
 	codexLoginPending: boolean;
+	/** Load locally installed Pi extensions, which may register extra providers. */
+	loadTrustedPiExtensions: boolean;
 	security: SecuritySettings;
 }
 
@@ -114,6 +116,7 @@ export const DEFAULT_SETTINGS: PiObsidianSettings = {
 	codexAccountId: "",
 	codexTokenExpiresAt: 0,
 	codexLoginPending: false,
+	loadTrustedPiExtensions: false,
 	security: {
 		allowWrite: false,
 		allowBash: false,
@@ -141,6 +144,7 @@ export function normalizeSettings(data: Partial<PiObsidianSettings> | null | und
 		codexAccountId: data?.codexAccountId ?? "",
 		codexTokenExpiresAt: data?.codexTokenExpiresAt ?? 0,
 		codexLoginPending: data?.codexLoginPending ?? false,
+		loadTrustedPiExtensions: data?.loadTrustedPiExtensions ?? false,
 		security: {
 			allowWrite: data?.security?.allowWrite ?? false,
 			allowBash: data?.security?.allowBash ?? false,
@@ -189,15 +193,31 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Pi agent").setHeading();
 		containerEl.createEl("p", {
 			// eslint-disable-next-line obsidianmd/ui/sentence-case -- product names (OpenAI, ChatGPT)
-			text: "Prompts, vault content read by tools, and tool results are sent to the configured model provider. With the OpenAI subscription provider, your ChatGPT login is used — no API key needed.",
+			text: "Prompts, vault content read by tools, and tool results are sent to the model selected in your local Pi installation.",
 		});
 
-		this.addProviderSetting(containerEl);
-		this.addModelSetting(containerEl);
-		this.addThinkingSetting(containerEl);
+		this.addPiConfigurationSetting(containerEl);
 		this.addLanguageSetting(containerEl);
-		this.addApiKeySetting(containerEl);
 		this.addSecuritySetting(containerEl);
+	}
+
+	private addPiConfigurationSetting(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName("Models and authentication")
+			.setDesc("Pi Teacher uses the models and credentials already configured in Pi at ~/.pi/agent. Sign in or configure a provider in Pi first; the chat selector then lists only its available models. This includes Pi-supported subscriptions and API-key providers such as OpenCode.");
+
+		new Setting(containerEl)
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- Pi is the product name.
+			.setName("Load trusted Pi extensions")
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- Pi is the product name.
+			.setDesc("Allow locally installed Pi extensions to register additional model providers. Enable this only for extensions you trust, because Pi executes their code.")
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.loadTrustedPiExtensions);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.loadTrustedPiExtensions = value;
+					await this.plugin.saveSettings();
+				});
+			});
 	}
 
 	private addLanguageSetting(containerEl: HTMLElement): void {

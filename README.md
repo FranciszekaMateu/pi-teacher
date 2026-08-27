@@ -4,7 +4,7 @@
 
 A one-to-one AI tutor inside Obsidian. Pi Teacher probes what you already know, plans the lesson as a dependency graph, and walks you through it one step at a time — quizzing you at every step, proposing flashcards for spaced repetition, and saving what you learned as knowledge notes in your vault.
 
-It runs the [pi](https://github.com/badlogic/pi-mono) agent harness locally and uses your **OpenAI/ChatGPT subscription** (Plus/Pro) — no API key required. Other providers (with API keys) are also supported.
+It runs the [pi](https://github.com/badlogic/pi-mono) agent harness locally and uses the models and authentication you have already configured in Pi — including subscriptions and API-key providers such as OpenAI/ChatGPT and OpenCode.
 
 > Desktop only (`isDesktopOnly: true`). Requires Obsidian 1.5.7+.
 
@@ -19,8 +19,9 @@ It runs the [pi](https://github.com/badlogic/pi-mono) agent harness locally and 
 ## Features
 
 - Chat side panel with streaming responses, abort, and chat history (searchable, grouped by date).
-- Sign in with your ChatGPT subscription (OpenAI device-code OAuth) or use any pi-supported provider with an API key.
-- Model and thinking-effort selectors right in the composer.
+- Uses Pi's shared local configuration (`~/.pi/agent`), including its authenticated providers and custom `models.json` entries.
+- Model and thinking-effort selectors right in the composer; it lists only models currently available in Pi.
+- Optional loading of trusted local Pi extensions when an additional provider is supplied by an extension.
 - Attach images (paste or file), the active Markdown note, or PDFs (text extraction with page ranges).
 - Bilingual interface: English and Spanish, following Obsidian's language by default.
 - Vault-scoped tools (read, write, edit, ls, find, grep) with an optional, allowlisted bash sandbox. Write and bash are **off by default** and require explicit opt-in.
@@ -59,9 +60,11 @@ Then copy `main.js`, `manifest.json`, `styles.css`, `pi-runtime.cjs`, `pdf.worke
 ## Setup
 
 1. Open **Settings → Pi Teacher**.
-2. With the default provider (`openai-codex`), select **Sign in with OpenAI** and complete the device login in your browser. Your subscription is used directly; no API key is stored.
-3. Optionally set the interface language (English, Spanish, or auto).
-4. Open the chat with the **Open pi chat** command, the ribbon bot icon, or **Teach me something** to jump straight into a lesson.
+2. In Pi, sign in or configure the provider you want to use. Pi Teacher reuses the local Pi configuration at `~/.pi/agent`; it never copies credentials into the vault.
+3. Open **Pi Teacher** and select an available model from the composer controls.
+4. If the provider comes from a Pi extension, enable **Load trusted Pi extensions** in the Pi Teacher settings first.
+5. Optionally set the interface language (English, Spanish, or auto).
+6. Open the chat with the **Open pi chat** command, the ribbon bot icon, or **Teach me something** to jump straight into a lesson.
 
 ## Usage
 
@@ -74,7 +77,7 @@ Then copy `main.js`, `manifest.json`, `styles.css`, `pi-runtime.cjs`, `pdf.worke
 ## Privacy and security
 
 - **What is sent to the model provider:** your prompts, the conversation history, vault content returned by tools, and tool results. Nothing else. No telemetry.
-- **What stays local:** settings, OAuth tokens, and chat sessions (JSONL under `<vault>/.pi/agent/sessions/`). Tokens are stored in Obsidian plugin data on your machine only.
+- **What stays local:** Pi credentials and provider configuration remain in `~/.pi/agent`; chat sessions remain under `<vault>/.pi/agent/sessions/`. Pi Teacher does not copy or display credentials.
 - **Vault access is read-only by default.** Write/edit tools and the bash tool (allowlisted commands, per-command timeout) require explicit opt-in in settings, and every mutation asks for confirmation by default.
 - Tool paths must be vault-relative; absolute paths and `..` escapes are rejected, and the plugin's own internals are off-limits.
 
@@ -115,7 +118,7 @@ See [RELEASE.md](RELEASE.md) for the release checklist.
 
 - **Plugin fails to load:** check `<vault>/.obsidian/plugins/pi-teacher/load-error.txt` and the developer console.
 - **"Pi runtime is missing":** the release zip (or a full build) wasn't copied — `pi-runtime.cjs` must sit next to `main.js`.
-- **Model errors:** re-run **Sign in with OpenAI**; subscription tokens refresh automatically but can be revoked.
+- **Model errors:** refresh the provider login or configuration in Pi, then reopen the chat so Pi Teacher reloads its available models.
 
 ## Credits and license
 

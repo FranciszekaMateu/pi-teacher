@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Component, MarkdownRenderer, renderMath, type App } from "obsidian";
+import { Component, finishRenderMath, loadMathJax, MarkdownRenderer, renderMath, type App } from "obsidian";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import type { ChatSnapshot, PiSessionService } from "../pi/piSessionService";
-import { getProviderModels } from "../settings";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { ChatInputController } from "./ChatInputController";
 import { isSendShortcut } from "./keyboard";
@@ -17,10 +16,11 @@ import { stripFlashcardsMarkup, type FlashcardProposal } from "../pi/flashcards"
 import { isVisibleChatMessage, nextUserMessageText } from "./chatVisibility";
 import { firstPastedImage } from "./clipboardImage";
 import { buildAttachedDocumentPrompt, parseAttachedDocumentPrompt, type AttachedDocument } from "./attachedDocument";
-import { loadActiveDocument } from "./activeDocument";
+import { loadActiveDocument, loadLatestMarkdownNote } from "./activeDocument";
+import { isLastNoteQuizRequest } from "./lastNoteQuiz";
 import { renderChatMarkdown } from "./markdownRendering";
 import { thinkingStatus } from "./thinkingStatus";
-import { normalizeMathMarkdown } from "./mathMarkdown";
+import { normalizeMathMarkdown, tokenizeQuizText } from "./mathMarkdown";
 import { filterAndGroupChats } from "./historyPresentation";
 import { chatStrings, type ChatStrings, type UiLanguage } from "./strings";
 import { BookmarkIcon, CloseIcon, FileTextIcon, GraphIcon, ImageIcon, MessageIcon, PlusIcon, RefreshIcon, SearchIcon, SendIcon, StopIcon, TargetIcon, TrashIcon } from "./icons";
@@ -54,17 +54,20 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 		return unsubscribe;
 	}, [service]);
 
+	// A new quiz replaces the answered one while the input keeps its text —
+	// clear it so stale freeform drafts are never submitted to the next quiz.
+	const pendingQuestion = snapshot.pendingQuiz?.question;
+	useEffect(() => {
+		setFreeformQuiz("");
+	}, [pendingQuestion]);
+
 	const visibleMessages = useMemo(() => {
 		const messages = snapshot.streamingMessage ? [...snapshot.messages, snapshot.streamingMessage] : snapshot.messages;
 		return messages.filter(isVisibleChatMessage);
 	}, [snapshot.messages, snapshot.streamingMessage]);
 
-	const availableModels = useMemo(
-		() => getProviderModels(snapshot.provider).map((model) => ({ id: String(model.id), name: String(model.name ?? model.id) })),
-		[snapshot.provider],
-	);
-	const updateRuntime = (modelId: string, effort: ModelThinkingLevel): void => {
-		void service.updateRuntimeSettings(modelId, effort).catch((error) => console.error("[Pi Teacher] Runtime settings update failed", error));
+	const updateRuntime = (provider: string, modelId: string, effort: ModelThinkingLevel): void => {
+		void service.updateRuntimeSettings(provider, modelId, effort).catch((error) => console.error("[Pi Teacher] Runtime settings update failed", error));
 	};
 
 	const sendPrompt = async (): Promise<void> => {
@@ -73,7 +76,18 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 			return;
 		}
 		const attachment = image;
-		const activeDocument = document;
+		let activeDocument = document;
+		// This shortcut is an explicit learner request for a vault source. Attach
+		// it here, instead of leaving the agent to ask for it or inspect the vault.
+		if (!activeDocument && isLastNoteQuizRequest(prompt)) {
+			try {
+				activeDocument = await loadLatestMarkdownNote(app);
+				setAttachmentError(null);
+			} catch (error) {
+				setAttachmentError(error instanceof Error ? error.message : "Could not load the latest note.");
+				return;
+			}
+		}
 		setInput("");
 		setImage(null);
 		setDocument(null);
@@ -97,29 +111,11 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 		};
 	}, [inputController]);
 
-	useEffect(() => {
-		const textarea = textareaRef.current;
-		if (!textarea) {
-			return undefined;
-		}
-
-		const handleNativeKeyDown = (event: KeyboardEvent): void => {
-			if (!isSendShortcut(event)) {
-				return;
-			}
-			event.preventDefault();
-			event.stopPropagation();
-			sendPromptRef.current();
-		};
-
-		textarea.addEventListener("keydown", handleNativeKeyDown, { capture: true });
-		return () => {
-			textarea.removeEventListener("keydown", handleNativeKeyDown, { capture: true });
-		};
-	}, []);
-
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-		if (!isSendShortcut(event)) {
+		// Obsidian's Scope owns Ctrl/Cmd+Enter and routes it through the
+		// ChatInputController. The React handler owns plain Enter only; having
+		// both paths handle the same key produced two prompts for one reply.
+		if (!isSendShortcut(event) || event.ctrlKey || event.metaKey) {
 			return;
 		}
 		event.preventDefault();
@@ -166,6 +162,11 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 	const submitQuizAnswer = (answer: string): void => {
 		setFreeformQuiz("");
 		service.answerQuiz(answer);
+	};
+
+	const requestQuizExplanation = (): void => {
+		if (snapshot.isStreaming || !snapshot.pendingQuiz) return;
+		void service.sendPrompt("No me siento preparado para responder el quiz actual. Explícame desde cero los conceptos necesarios, con un ejemplo sencillo, sin calificarme todavía. Después vuelve a emitir exactamente el mismo quiz como único quiz activo para que pueda intentarlo.");
 	};
 
 	const applySuggestion = (prompt: string): void => {
@@ -314,10 +315,11 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 								showCaret={snapshot.isStreaming && message === snapshot.streamingMessage && message.role === "assistant"}
 							/>
 						))}
-						{snapshot.pendingQuiz ? (
-							<QuizCard {...snapshot.pendingQuiz} answer={snapshot.quizAnswer} app={app} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} t={t} />
-						) : null}
+						{/* Show the visual explanation before testing recall with the quiz. */}
 						{snapshot.pendingVisual ? <VisualCard visual={snapshot.pendingVisual} t={t} onSave={() => void service.saveVisual(snapshot.pendingVisual!)} /> : null}
+						{snapshot.pendingQuiz ? (
+							<QuizCard {...snapshot.pendingQuiz} answer={snapshot.quizAnswer} app={app} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} onRequestExplanation={requestQuizExplanation} t={t} />
+						) : null}
 						{snapshot.pendingFlashcards?.length ? <FlashcardCard cards={snapshot.pendingFlashcards} t={t} onSave={() => void service.saveFlashcards(snapshot.pendingFlashcards!)} /> : null}
 						{snapshot.isStreaming && (!snapshot.streamingMessage || snapshot.pendingToolCalls.length > 0) ? (
 							<ThinkingIndicator label={thinkingStatus(snapshot.isStreaming, snapshot.pendingToolCalls.length, t)} />
@@ -380,9 +382,10 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 					<span className="pi-chat__composer-hint">{t.composerHint}</span>
 					<RuntimeControls
 						strings={t}
+						provider={snapshot.provider}
 						modelId={snapshot.modelId}
 						thinkingLevel={snapshot.thinkingLevel}
-						models={availableModels}
+						models={snapshot.availableModels}
 						disabled={snapshot.isStreaming}
 						onChange={updateRuntime}
 					/>
@@ -535,6 +538,7 @@ function QuizCard({
 	freeformValue,
 	onFreeformChange,
 	onAnswer,
+	onRequestExplanation,
 	t,
 }: {
 	question: string;
@@ -550,12 +554,23 @@ function QuizCard({
 	freeformValue: string;
 	onFreeformChange: (value: string) => void;
 	onAnswer: (answer: string) => void;
+	onRequestExplanation: () => void;
 	t: ChatStrings;
 }): React.JSX.Element {
 	const [hintShown, setHintShown] = useState(false);
 	// Shuffle once per quiz so option position carries no signal; grading
-	// compares option text, so order does not affect correctness.
-	const [displayOptions] = useState(() => shuffleOptions(options));
+	// compares option text, so order does not affect correctness. The teacher
+	// re-emits the quiz block on every response, and React keeps component
+	// state across prop changes — reset the shuffle (and the hint) whenever a
+	// different quiz lands here, or clicks would grade against stale options.
+	const quizKey = `${question}\u0000${options.join("\u0000")}`;
+	const [shuffledFor, setShuffledFor] = useState(quizKey);
+	const [displayOptions, setDisplayOptions] = useState(() => shuffleOptions(options));
+	if (shuffledFor !== quizKey) {
+		setShuffledFor(quizKey);
+		setDisplayOptions(shuffleOptions(options));
+		setHintShown(false);
+	}
 	const answered = Boolean(answer);
 	const locked = answered || Boolean(frozen);
 
@@ -563,7 +578,9 @@ function QuizCard({
 	// the snapshot (quizAnswer), so the card stays visible with the correction
 	// while the teacher prepares the next response.
 	const chooseOption = (option: string): void => {
-		if (answered) return;
+		// Only options of the current quiz are valid answers; anything else
+		// would be a stale click left over from a replaced quiz.
+		if (answered || !options.includes(option)) return;
 		onAnswer(option);
 	};
 
@@ -593,6 +610,11 @@ function QuizCard({
 					<QuizText app={app} text={question} />
 				</div>
 			</header>
+			{!locked ? (
+				<button type="button" className="pi-chat__quiz-explain" onClick={onRequestExplanation}>
+					{t.quizExplain}
+				</button>
+			) : null}
 			{displayOptions.length > 0 ? (
 				<div className="pi-chat__quiz-options">
 					{displayOptions.map((option, index) => (
@@ -648,51 +670,49 @@ function QuizCard({
 	);
 }
 
-/**
- * Quiz strings are model-generated text with LaTeX. MarkdownRenderer.render
- * does not reliably typeset inline `$…$` math, so math segments go straight
- * to Obsidian's MathJax wrapper (renderMath) and only prose uses the
- * markdown pipeline.
- */
-function QuizText({ app, text }: { app: App; text: string }): React.JSX.Element {
+/** Renders quiz prose inline and sends every parsed formula directly to MathJax. */
+function QuizText({ text }: { app: App; text: string }): React.JSX.Element {
 	const ref = useRef<HTMLSpanElement | null>(null);
-	const componentRef = useRef<Component | null>(null);
 
 	useEffect(() => {
 		const el = ref.current;
-		if (!el || !text.trim()) {
-			return;
-		}
+		if (!el || !text.trim()) return;
 		el.empty();
-		componentRef.current?.unload();
-		const component = new Component();
-		componentRef.current = component;
-		const segments = normalizeMathMarkdown(text).split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
+		let cancelled = false;
 		void (async () => {
-			for (const segment of segments) {
-				if (!segment) continue;
-				const display = /^\$\$([\s\S]*)\$\$$/.exec(segment);
-				const inline = /^\$([^$\n]+)\$$/.exec(segment);
-				try {
-					if (display?.[1] !== undefined) {
-						el.appendChild(renderMath(display[1].trim(), true));
-					} else if (inline?.[1] !== undefined) {
-						el.appendChild(renderMath(inline[1].trim(), false));
-					} else {
-						const container = el.createSpan();
-						await renderChatMarkdown(MarkdownRenderer, app, segment, container, component);
+			try {
+				await loadMathJax();
+			} catch {
+				if (!cancelled) el.replaceChildren(document.createTextNode(text));
+				return;
+			}
+			if (cancelled) return;
+			const rendered = document.createDocumentFragment();
+			for (const segment of tokenizeQuizText(text)) {
+				if (segment.type === "text") rendered.append(segment.value);
+				else {
+					try {
+						rendered.appendChild(renderMath(segment.tex, segment.display));
+					} catch {
+						// Isolate malformed model output instead of breaking the quiz.
+						rendered.append(segment.tex);
 					}
-				} catch {
-					// Never blank the quiz text: fall back to the raw segment.
-					el.append(segment);
 				}
+			}
+			if (cancelled) return;
+			el.replaceChildren(rendered);
+			// Rendering already succeeded; a stylesheet flush failure must not
+			// append a second raw copy of the question.
+			try {
+				await finishRenderMath();
+			} catch {
+				// Keep the successfully rendered nodes in place.
 			}
 		})();
 		return () => {
-			component.unload();
-			componentRef.current = null;
+			cancelled = true;
 		};
-	}, [app, text]);
+	}, [text]);
 
 	return <span className="pi-quiz-text" ref={ref} />;
 }
@@ -782,9 +802,19 @@ function AttachedDocumentCard({ path, kind }: { path: string; kind: AttachedDocu
 function renderAssistantMessage(app: App, message: AssistantMessage, t: ChatStrings, nextUserText?: string, pendingQuestion?: string): React.ReactNode {
 	return message.content.flatMap((content, index) => {
 		if (content.type !== "text") return [];
-		return splitQuizSegments(content.text).map((segment, segmentIndex): React.ReactNode => {
+		const segments = splitQuizSegments(content.text);
+		// A response may contain malformed/repeated protocol blocks. Keep only
+		// the last quiz in that response so the transcript cannot present more
+		// than one new quiz at a time; the live pendingQuiz is the only one
+		// that remains answerable.
+		let latestQuizIndex = -1;
+		segments.forEach((segment, segmentIndex) => {
+			if (segment.type === "quiz") latestQuizIndex = segmentIndex;
+		});
+		return segments.map((segment, segmentIndex): React.ReactNode => {
 			const key = `${index}-${segmentIndex}`;
 			if (segment.type === "quiz") {
+				if (segmentIndex !== latestQuizIndex) return null;
 				// The live pending quiz renders once, as the interactive card below.
 				if (segment.quiz.question === pendingQuestion) return null;
 				return (
@@ -798,6 +828,7 @@ function renderAssistantMessage(app: App, message: AssistantMessage, t: ChatStri
 						freeformValue=""
 						onFreeformChange={() => undefined}
 						onAnswer={() => undefined}
+						onRequestExplanation={() => undefined}
 					/>
 				);
 			}

@@ -4,7 +4,7 @@
 
 Un tutor de IA uno-a-uno dentro de Obsidian. Pi Teacher sondea lo que ya sabes, planifica la lección como un grafo de dependencias y te guía paso a paso — con quizzes en cada paso, flashcards para repetición espaciada y notas de conocimiento guardadas en tu vault.
 
-Ejecuta el harness de agente [pi](https://github.com/badlogic/pi-mono) localmente y usa tu **suscripción de OpenAI/ChatGPT** (Plus/Pro) — sin API key. También se admiten otros proveedores (con API key).
+Ejecuta el harness de agente [pi](https://github.com/badlogic/pi-mono) localmente y usa los modelos y la autenticación que ya tengas configurados en Pi —incluidas suscripciones y proveedores con API key como OpenAI/ChatGPT u OpenCode.
 
 > Solo escritorio (`isDesktopOnly: true`). Requiere Obsidian 1.5.7+.
 
@@ -19,8 +19,9 @@ Ejecuta el harness de agente [pi](https://github.com/badlogic/pi-mono) localment
 ## Funciones
 
 - Panel lateral de chat con respuestas en streaming, aborto e historial de chats (con búsqueda y agrupado por fecha).
-- Inicia sesión con tu suscripción de ChatGPT (OAuth de código de dispositivo de OpenAI) o usa cualquier proveedor compatible con pi mediante API key.
-- Selectores de modelo y esfuerzo de razonamiento directamente en el compositor.
+- Usa la configuración local compartida de Pi (`~/.pi/agent`), con sus proveedores autenticados y entradas personalizadas de `models.json`.
+- Selectores de modelo y esfuerzo de razonamiento directamente en el compositor; muestra solo los modelos disponibles en Pi.
+- Carga opcional de extensiones locales confiables de Pi cuando un proveedor adicional proviene de una extensión.
 - Adjunta imágenes (pegar o archivo), la nota Markdown activa o PDFs (extracción de texto con rangos de páginas).
 - Interfaz bilingüe: inglés y español, siguiendo el idioma de Obsidian por defecto.
 - Herramientas con alcance al vault (read, write, edit, ls, find, grep) y un sandbox de bash opcional con lista de permitidos. Write y bash están **desactivados por defecto** y requieren opt-in explícito.
@@ -59,9 +60,11 @@ Luego copia `main.js`, `manifest.json`, `styles.css`, `pi-runtime.cjs`, `pdf.wor
 ## Configuración
 
 1. Abre **Settings → Pi Teacher**.
-2. Con el proveedor por defecto (`openai-codex`), selecciona **Sign in with OpenAI** y completa el login de dispositivo en tu navegador. Se usa tu suscripción directamente; no se guarda ninguna API key.
-3. Opcionalmente configura el idioma de la interfaz (inglés, español o auto).
-4. Abre el chat con el comando **Open pi chat**, el icono del bot en la ribbon, o **Teach me something** para entrar directo a una lección.
+2. En Pi, inicia sesión o configura el proveedor que quieras usar. Pi Teacher reutiliza la configuración local de Pi en `~/.pi/agent`; no copia credenciales al vault.
+3. Abre **Pi Teacher** y elige un modelo disponible desde los controles del compositor.
+4. Si el proveedor viene de una extensión de Pi, activa antes **Load trusted Pi extensions** en los ajustes de Pi Teacher.
+5. Opcionalmente configura el idioma de la interfaz (inglés, español o auto).
+6. Abre el chat con el comando **Open pi chat**, el icono del bot en la ribbon, o **Teach me something** para entrar directo a una lección.
 
 ## Uso
 
@@ -74,7 +77,7 @@ Luego copia `main.js`, `manifest.json`, `styles.css`, `pi-runtime.cjs`, `pdf.wor
 ## Privacidad y seguridad
 
 - **Lo que se envía al proveedor del modelo:** tus prompts, el historial de conversación, el contenido del vault devuelto por herramientas y los resultados de herramientas. Nada más. Sin telemetría.
-- **Lo que queda local:** ajustes, tokens OAuth y sesiones de chat (JSONL en `<vault>/.pi/agent/sessions/`). Los tokens se guardan solo en los datos del plugin en tu máquina.
+- **Lo que queda local:** las credenciales y configuración de proveedores de Pi permanecen en `~/.pi/agent`; las sesiones de chat siguen en `<vault>/.pi/agent/sessions/`. Pi Teacher no copia ni muestra credenciales.
 - **El acceso al vault es de solo lectura por defecto.** Las herramientas de escritura y el bash (comandos en lista de permitidos, timeout por comando) requieren opt-in explícito en ajustes, y toda mutación pide confirmación por defecto.
 - Las rutas de herramientas deben ser relativas al vault; se rechazan rutas absolutas y escapes con `..`, y los internos del plugin están fuera de alcance.
 
@@ -115,7 +118,7 @@ Consulta [RELEASE.md](RELEASE.md) para el checklist de releases (en inglés).
 
 - **El plugin no carga:** revisa `<vault>/.obsidian/plugins/pi-teacher/load-error.txt` y la consola de desarrollador.
 - **"Pi runtime is missing":** no se copió el zip completo (o el build) — `pi-runtime.cjs` debe estar junto a `main.js`.
-- **Errores de modelo:** vuelve a ejecutar **Sign in with OpenAI**; los tokens de suscripción se refrescan solos pero pueden revocarse.
+- **Errores de modelo:** renueva el login o la configuración del proveedor en Pi y vuelve a abrir el chat para que Pi Teacher recargue los modelos disponibles.
 
 ## Créditos y licencia
 
