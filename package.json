@@ -1,6 +1,6 @@
 {
   "name": "pi-teacher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A one-to-one AI tutor inside Obsidian: Socratic lessons, quizzes, and spaced repetition, powered by the pi agent harness and your ChatGPT subscription.",
   "main": "main.js",
   "type": "module",

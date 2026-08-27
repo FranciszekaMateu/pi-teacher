@@ -31,20 +31,17 @@ It runs the [pi](https://github.com/badlogic/pi-mono) agent harness locally and 
 
 ### From a GitHub release (recommended)
 
-1. Download **`pi-teacher-<version>.zip`** from the [latest release](../../releases/latest).
-2. Extract it into your vault's plugins folder. You should end up with:
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](../../releases/latest).
+2. Create the following folder in your vault and place those files inside it:
    ```text
    <vault>/.obsidian/plugins/pi-teacher/
      main.js
      manifest.json
      styles.css
-     pi-runtime.cjs
-     pdf.worker.mjs
-     runtime-assets/
    ```
 3. Restart Obsidian (or reload it) and enable **Pi Teacher** in **Settings → Community plugins**.
 
-> **Why not BRAT or the community directory?** The plugin ships extra runtime files (`pi-runtime.cjs`, `pdf.worker.mjs`, `runtime-assets/`) next to the standard three, and neither BRAT nor the official community-plugin channel distributes extra files. Use the zip. Inlining the runtime into `main.js` so the plugin can join the community directory is on the roadmap.
+> Pi Teacher is ready for installation from the Obsidian Community directory and through BRAT: its runtime and required static assets are bundled into `main.js`.
 
 ### From source
 
@@ -55,7 +52,7 @@ npm install
 npm run build
 ```
 
-Then copy `main.js`, `manifest.json`, `styles.css`, `pi-runtime.cjs`, `pdf.worker.mjs`, and `runtime-assets/` from the repo root into `<vault>/.obsidian/plugins/pi-teacher/`.
+Then copy `main.js`, `manifest.json`, and `styles.css` from the repo root into `<vault>/.obsidian/plugins/pi-teacher/`.
 
 ## Setup
 
@@ -88,7 +85,7 @@ Pi Teacher runs two processes:
 ```text
 Obsidian renderer                 Node child process
 ┌──────────────────┐  JSONL RPC   ┌──────────────────────────┐
-│ React chat panel  │ ───────────▶ │ pi-runtime.cjs            │
+│ React chat panel  │ ───────────▶ │ bundled Node RPC runtime   │
 │ PiSessionService  │ ◀─────────── │ (pi agent harness +       │
 └──────────────────┘              │  vault tools + OAuth)     │
                                   └──────────────────────────┘
@@ -98,7 +95,7 @@ Obsidian renderer                 Node child process
 - `src/pi/` — session service, RPC bridge, OAuth, protocol parsers (quiz, lesson, visual, flashcards), teacher prompt, bash sandbox, PDF tool.
 - `src/ui/` — React chat panel and helpers (bilingual strings, icons, markdown/math rendering, history).
 - `src/vault/` — vault-scoped tool implementations.
-- `src/runtime/pi-runtime.ts` — entry point bundled into `pi-runtime.cjs` (the Node side).
+- `src/runtime/pi-runtime.ts` — Node-side entry point, statically bundled into `main.js`.
 
 ## Development
 
@@ -107,17 +104,16 @@ npm install     # install dependencies
 npm run dev     # watch build
 npm test        # vitest
 npm run lint    # eslint
-npm run build   # typecheck + production build (+ copies runtime assets)
+npm run build   # typecheck + production build
 ```
 
-After each build, copy the artifacts listed above into your vault's plugin folder and reload Obsidian. `npm version` bumps `manifest.json` and `versions.json` for you.
+After each build, copy `main.js`, `manifest.json`, and `styles.css` into your vault's plugin folder and reload Obsidian. `npm version` bumps `manifest.json` and `versions.json` for you.
 
 See [RELEASE.md](RELEASE.md) for the release checklist.
 
 ## Troubleshooting
 
 - **Plugin fails to load:** check `<vault>/.obsidian/plugins/pi-teacher/load-error.txt` and the developer console.
-- **"Pi runtime is missing":** the release zip (or a full build) wasn't copied — `pi-runtime.cjs` must sit next to `main.js`.
 - **Model errors:** refresh the provider login or configuration in Pi, then reopen the chat so Pi Teacher reloads its available models.
 
 ## Credits and license

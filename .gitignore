@@ -8,8 +8,10 @@
 # npm
 node_modules
 
-# Build artifacts — attach these to GitHub releases instead of committing them.
+# Build artifact — attach it to GitHub releases instead of committing it.
 main.js
+
+# Legacy sidecars from releases before 0.1.1. Current builds embed these in main.js.
 pi-runtime.cjs
 pdf.worker.mjs
 runtime-assets/

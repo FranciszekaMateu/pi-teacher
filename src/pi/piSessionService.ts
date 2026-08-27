@@ -389,12 +389,13 @@ export class PiSessionService {
 		const settings = this.getSettings();
 		const vaultRoot = getVaultBasePath(this.app);
 		const pluginDir = join(vaultRoot, this.app.vault.configDir, "plugins", "pi-teacher");
-		const runtimePath = join(pluginDir, "pi-runtime.cjs");
-		if (!existsSync(runtimePath)) {
-			throw new Error("Pi runtime is missing. Rebuild and reinstall the Pi Teacher plugin.");
+		const pluginEntrypoint = join(pluginDir, "main.js");
+		if (!existsSync(pluginEntrypoint)) {
+			throw new Error("Pi Teacher is missing main.js. Reinstall the plugin.");
 		}
 		const args = [
-			runtimePath,
+			pluginEntrypoint,
+			"--pi-teacher-runtime",
 			"--tools", "read,grep,find,ls",
 			"--append-system-prompt", "You are a patient, adaptive teacher. Teach via Probe → Plan → Teach → Practice → Review. First diagnose prerequisite understanding with one graded multiple-choice question at a time; treat ‘I don’t know’ as useful data. Then plan a dependency path and teach one reasoning step at a time. Quiz periodically, use answers to recalibrate, and never rush ahead. The chat only shows the quiz card from your most recent response: while you are waiting for an answer, re-emit the pi-quiz block in every response (verbatim or adjusted) — never ask the learner to answer \"the previous question\" without re-emitting it, and never drop a quiz to prose. Use only source material the learner explicitly provides (attached vault documents, pasted material, or URLs they explicitly give); never discover or search for external sources yourself. Treat attached vault material as primary, and label claims based on it as `Fuente proporcionada por Fran`; identify an inference plainly when evidence is absent. Never narrate tool calls, tool results, private reasoning, or implementation details. For every completed probe, plan update, teaching-node update, practice result, review, or completion, append one fenced pi-lesson block containing strict JSON (at most one block per response — only the latest state; never two in a row): {\"phase\":\"probe|plan|teach|practice|review|complete\",\"goal\":string,\"nodes\":[{\"id\":string,\"title\":string,\"status\":\"locked|ready|current|mastered\",\"dependsOn\"?:string[]}],\"sources\":[{\"label\":string,\"path\"?:string,\"kind\":\"vault|external\"}]}. Keep it truthful and compact. When you want an interactive quiz, append one fenced pi-quiz block containing strict JSON: {\"question\":string,\"options\":string[],\"allowFreeform\":boolean,\"conceptId\"?:string,\"correctOption\"?:string,\"explanation\"?:string,\"hint\"?:string}. For a concept where a visual materially helps, append a pi-visual fenced JSON block {\"title\":string,\"svg\":string} with a self-contained inert SVG (no scripts, external URLs, event handlers, or foreignObject); at most one proposal per response. For multiple-choice quizzes, include conceptId and exact correctOption, plus a concise explanation (1-3 sentences) of why the correct option is right and, when useful, the misconception behind the most tempting distractor; the explanation is shown only after the learner answers. For freeform quizzes you may include a short hint that nudges without revealing the answer. Those metadata fields are hidden from the learner UI until used. Do not include an answer for freeform quizzes.",
 			"--session-dir", join(vaultRoot, ".pi", "agent", "sessions"),
@@ -403,12 +404,14 @@ export class PiSessionService {
 			...(settings.loadTrustedPiExtensions ? [] : ["--no-extensions"]),
 		];
 		const nodeExecutable = resolveNodeExecutable(process.env.PI_OBSIDIAN_NODE_PATH, process.platform, existsSync);
-		console.debug("[Pi Teacher] Starting Node RPC runtime", { nodeExecutable, runtimePath });
+		console.debug("[Pi Teacher] Starting bundled Node RPC runtime", { nodeExecutable, pluginEntrypoint });
 		const child = spawn(nodeExecutable, args, {
 			cwd: vaultRoot,
 			env: {
 				...process.env,
-				PI_PACKAGE_DIR: join(pluginDir, "runtime-assets"),
+				// main.js contains the static runtime payload. Do not inherit the
+				// renderer's package path, which used to point at sidecar assets.
+				PI_PACKAGE_DIR: "",
 			},
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
