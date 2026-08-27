@@ -1,4 +1,6 @@
-declare const __PDF_WORKER_SOURCE__: string;
+import { gunzipSync } from "node:zlib";
+
+declare const __PDF_WORKER_GZIP_BASE64__: string;
 
 type PdfjsGlobal = { pdfjs?: { GlobalWorkerOptions?: { workerPort?: Worker } } };
 
@@ -15,7 +17,7 @@ export function configurePdfWorker(options: {
 export function configurePdfWorkerForObsidian(): void {
 	configurePdfWorker({
 		globalScope: globalThis as PdfjsGlobal,
-		source: __PDF_WORKER_SOURCE__,
+		source: gunzipSync(Buffer.from(__PDF_WORKER_GZIP_BASE64__, "base64")).toString("utf8"),
 		createWorker: (source) => {
 			const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
 			return new Worker(url, { type: "module" });

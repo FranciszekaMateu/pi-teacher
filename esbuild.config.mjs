@@ -38,7 +38,7 @@ __piRuntimeFs.readFileSync = function(path, options) {
 };\n`;
 
 const prod = process.argv[2] === "production";
-const pdfWorkerSource = readFileSync("node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs", "utf8");
+const pdfWorkerSource = gzipSync(readFileSync("node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs", "utf8")).toString("base64");
 const runtimeThemeAssets = JSON.stringify({
 	dark: readFileSync("node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json", "utf8"),
 	light: readFileSync("node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/light.json", "utf8"),
@@ -48,6 +48,17 @@ const nodeExternals = [
 	...builtinModules.map((moduleName) => `node:${moduleName}`),
 	"node:sqlite",
 ];
+
+// Preact's React-compatibility layer keeps the existing component source and
+// produces a small self-contained renderer. In particular, it avoids React
+// DOM's dynamic script-element helpers, which community-directory scanning
+// correctly flags as unsuitable for a plugin bundle.
+const rendererAliases = {
+	"react": "preact/compat",
+	"react-dom": "preact/compat",
+	"react-dom/client": "preact/compat/client",
+	"react/jsx-runtime": "preact/jsx-runtime",
+};
 
 async function bundleRuntime() {
 	const result = await esbuild.build({
@@ -77,6 +88,7 @@ const rendererContext = await esbuild.context({
 	banner: { js: rendererBanner },
 	entryPoints: ["src/main.ts"],
 	bundle: true,
+	alias: rendererAliases,
 	external: [
 		"obsidian",
 		"electron",
@@ -95,7 +107,7 @@ const rendererContext = await esbuild.context({
 	],
 	define: {
 		"import.meta": "__piImportMeta",
-		"__PDF_WORKER_SOURCE__": JSON.stringify(pdfWorkerSource),
+		"__PDF_WORKER_GZIP_BASE64__": JSON.stringify(pdfWorkerSource),
 		"__PI_RUNTIME_GZIP_BASE64__": JSON.stringify(runtimeSource),
 	},
 	format: "cjs",
