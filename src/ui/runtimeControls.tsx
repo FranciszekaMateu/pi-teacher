@@ -48,7 +48,11 @@ export function RuntimeControls({ strings, provider, modelId, thinkingLevel, mod
 	}, [open]);
 
 	const currentModel = models.find((model) => model.provider === provider && model.id === modelId);
-	const currentName = currentModel ? `${currentModel.provider} · ${currentModel.name}` : modelId;
+	// The runtime can briefly report its internal "Unknown" placeholder while
+	// its catalog is loading. Keep the selects bound to a real option so the UI
+	// never renders a blank model field during that transition.
+	const selectedModel = currentModel ?? models.find((model) => model.provider === provider) ?? models[0];
+	const currentName = selectedModel ? `${selectedModel.provider} · ${selectedModel.name}` : modelId;
 
 	return (
 		<div className="pi-chat__runtime" ref={rootRef}>
@@ -68,7 +72,7 @@ export function RuntimeControls({ strings, provider, modelId, thinkingLevel, mod
 				<div className="pi-chat__runtime-popover" role="dialog" aria-label={strings.runtimeButtonTitle}>
 					<label className="pi-chat__runtime-control">
 						{strings.modelLabel}
-						<select value={`${currentModel?.provider ?? ""}\u0000${modelId}`} disabled={disabled || models.length === 0} onChange={(event) => {
+						<select value={selectedModel ? `${selectedModel.provider}\u0000${selectedModel.id}` : ""} disabled={disabled || models.length === 0} onChange={(event) => {
 							const [provider, nextModelId] = event.currentTarget.value.split("\u0000", 2);
 							if (provider && nextModelId) onChange(provider, nextModelId, thinkingLevel);
 						}}>
@@ -81,8 +85,8 @@ export function RuntimeControls({ strings, provider, modelId, thinkingLevel, mod
 					</label>
 					<label className="pi-chat__runtime-control">
 						{strings.effortLabel}
-						<select value={thinkingLevel} disabled={disabled || !currentModel} onChange={(event) => {
-							if (currentModel) onChange(currentModel.provider, modelId, event.currentTarget.value as ModelThinkingLevel);
+						<select value={thinkingLevel} disabled={disabled || !selectedModel} onChange={(event) => {
+							if (selectedModel) onChange(selectedModel.provider, selectedModel.id, event.currentTarget.value as ModelThinkingLevel);
 						}}>
 							{THINKING_LEVELS.map((level) => (
 								<option key={level} value={level}>

@@ -20,7 +20,7 @@ import { providedSourceUrls } from "./providedSources";
 import { teacherSystemPrompt } from "./teacherPrompt";
 import { buildFlashcardAppend, type FlashcardProposal } from "./flashcards";
 import { flashcardDeck } from "./flashcardDeck";
-import { parsePiRuntimeModels, preferredPiRuntimeModel } from "./runtimeModels";
+import { parsePiRuntimeModels, resolvedPiRuntimeModel } from "./runtimeModels";
 
 export type ChatSnapshot = RpcChatSnapshot;
 type SnapshotListener = (snapshot: ChatSnapshot) => void;
@@ -433,9 +433,9 @@ export class PiSessionService {
 			state = await withRpcTimeout(this.sendCommand("get_state"), 12000, "get_state");
 			const modelsResponse = await withRpcTimeout(this.sendCommand("get_available_models"), 12000, "get_available_models");
 			const availableModels = parsePiRuntimeModels(modelsResponse.data?.models);
-			const preferred = preferredPiRuntimeModel(availableModels, settings.provider, settings.modelId);
-			if (preferred) {
-				await withRpcTimeout(this.sendCommand("set_model", { provider: preferred.provider, modelId: preferred.id }), 12000, "set_model");
+			const selected = resolvedPiRuntimeModel(availableModels, settings.provider, settings.modelId);
+			if (selected) {
+				await withRpcTimeout(this.sendCommand("set_model", { provider: selected.provider, modelId: selected.id }), 12000, "set_model");
 				await withRpcTimeout(this.sendCommand("set_thinking_level", { level: getPreferredThinkingLevel(settings) }), 12000, "set_thinking_level");
 				state = await withRpcTimeout(this.sendCommand("get_state"), 12000, "get_state");
 			}
