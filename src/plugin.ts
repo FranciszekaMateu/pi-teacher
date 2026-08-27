@@ -124,8 +124,7 @@ class TeachModal extends Modal {
 		let topic = "";
 		new Setting(contentEl)
 			.setName("Topic")
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- proper nouns (Rust, Maxwell)
-			.setDesc("e.g. differential forms, Rust ownership, Maxwell's equations…")
+			.setDesc("For example, differential forms or electromagnetism…")
 			.addText((text) => {
 				text.setPlaceholder("What do you want to learn?");
 				text.inputEl.addEventListener("keydown", (event) => {

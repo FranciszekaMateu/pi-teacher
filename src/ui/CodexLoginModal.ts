@@ -23,10 +23,9 @@ export class CodexDeviceLoginModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass("codex-login-modal");
 
-		contentEl.createEl("h2", { text: "Sign in with OpenAI" }); // eslint-disable-line obsidianmd/ui/sentence-case -- product name
+		contentEl.createEl("h2", { text: "Sign in" });
 		contentEl.createEl("p", {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- product names (Pi Teacher, ChatGPT)
-			text: "Open the link below in any browser (on this computer or your phone), then enter the code to authorize Pi Teacher with your ChatGPT subscription.",
+			text: "Open the link below in any browser, then enter the code to authorize your subscription.",
 		});
 
 		// Verification link — always visible, easy to copy / open anywhere.

@@ -192,8 +192,7 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Pi agent").setHeading();
 		containerEl.createEl("p", {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- product names (OpenAI, ChatGPT)
-			text: "Prompts, vault content read by tools, and tool results are sent to the model selected in your local Pi installation.",
+			text: "Prompts, vault content read by tools, and tool results are sent to the model selected in your local installation.",
 		});
 
 		this.addPiConfigurationSetting(containerEl);
@@ -207,10 +206,8 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 			.setDesc("Pi Teacher uses the models and credentials already configured in Pi at ~/.pi/agent. Sign in or configure a provider in Pi first; the chat selector then lists only its available models. This includes Pi-supported subscriptions and API-key providers such as OpenCode.");
 
 		new Setting(containerEl)
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- Pi is the product name.
-			.setName("Load trusted Pi extensions")
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- Pi is the product name.
-			.setDesc("Allow locally installed Pi extensions to register additional model providers. Enable this only for extensions you trust, because Pi executes their code.")
+			.setName("Load trusted extensions")
+			.setDesc("Allow locally installed extensions to register additional model providers. Enable this only for extensions you trust, because they execute local code.")
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.loadTrustedPiExtensions);
 				toggle.onChange(async (value) => {
@@ -239,8 +236,7 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 	private addProviderSetting(containerEl: HTMLElement): void {
 		new Setting(containerEl)
 			.setName("Provider")
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- product names (ChatGPT)
-			.setDesc("openai-codex uses your ChatGPT subscription (no API key). Other providers are listed for compatibility.")
+			.setDesc("The selected provider uses your subscription with no API key. Other providers are listed for compatibility.")
 			.addDropdown((dropdown) => {
 				for (const provider of createModels().getProviders()) {
 					dropdown.addOption(provider.id, provider.name || provider.id);
@@ -318,12 +314,11 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 		const isLoggedIn = !!stored && !!refresh && !this.plugin.settings.codexLoginPending;
 
 		new Setting(containerEl)
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- product names (OpenAI, ChatGPT Plus/Pro)
-			.setName("OpenAI subscription (ChatGPT Plus/Pro)")
+			.setName("Subscription login")
 			.setDesc(
 				isLoggedIn
-					? "Connected. Uses your ChatGPT subscription — no API key needed. Token refreshes automatically."
-					: "Sign in with your ChatGPT account to use the Codex models included in your subscription.",
+					? "Connected. No API key is needed and the token refreshes automatically."
+					: "Sign in to use the Codex models included in your subscription.",
 			)
 			.addButton((button) => {
 				if (isLoggedIn) {
@@ -342,7 +337,7 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 						this.display();
 					});
 				} else {
-					button.setButtonText("Sign in with OpenAI").setCta().onClick(() => { // eslint-disable-line obsidianmd/ui/sentence-case -- product name
+					button.setButtonText("Sign in").setCta().onClick(() => {
 						void this.startCodexLogin();
 					});
 				}
@@ -445,7 +440,7 @@ export class PiObsidianSettingTab extends PluginSettingTab {
 				this.plugin.settings.codexRefreshToken = credentials.refresh;
 				this.plugin.settings.codexTokenExpiresAt = credentials.expires;
 				this.plugin.settings.codexAccountId = credentials.accountId ?? "";
-					new Notice("Connected to OpenAI with your ChatGPT subscription. Ready to learn!"); // eslint-disable-line obsidianmd/ui/sentence-case -- product names
+					new Notice("Connected. Ready to learn!");
 			} catch (error) {
 				if (!controller.signal.aborted) {
 					(modal as CodexDeviceLoginModal | null)?.finish();

@@ -1,9 +1,9 @@
 {
 	"id": "pi-teacher",
 	"name": "Pi Teacher",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"minAppVersion": "1.5.7",
-	"description": "A one-to-one AI tutor in Obsidian powered by the pi agent harness. Probe what you know, plan the lesson as a dependency graph, and walk you through it one step at a time with quizzes. Uses your OpenAI/ChatGPT subscription.",
+	"description": "A one-to-one AI tutor powered by the pi agent harness. Probe what you know, plan the lesson as a dependency graph, and walk you through it step by step with quizzes. Uses your OpenAI/ChatGPT subscription.",
 	"author": "Francisco Escobar",
 	"authorUrl": "https://github.com/FranciszekaMateu",
 	"isDesktopOnly": true
