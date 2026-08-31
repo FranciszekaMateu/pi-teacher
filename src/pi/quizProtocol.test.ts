@@ -24,6 +24,11 @@ describe("extractQuiz", () => {
 		expect(extractQuiz(text)).toMatchObject({ hint: "Think units", explanation: "Because A is defined that way." });
 	});
 
+	it("recovers TeX backslashes that make model JSON invalid", () => {
+		const text = "```pi-quiz\n{\"question\":\"¿Cuál?\",\"options\":[\"A\"],\"allowFreeform\":false,\"explanation\":\"Una hipótesis asigna h\\in H.\"}\n```";
+		expect(extractQuiz(text)?.explanation).toBe("Una hipótesis asigna h\\in H.");
+	});
+
 	it("drops blank or non-string explanation/hint values", () => {
 		const blank = "```pi-quiz\n{\"question\":\"x\",\"options\":[\"A\"],\"allowFreeform\":true,\"hint\":\"  \",\"explanation\":42}\n```";
 		const quiz = extractQuiz(blank);

@@ -11,6 +11,27 @@ import type { PiRuntimeModel } from "../pi/rpcState";
 
 const THINKING_LEVELS: ModelThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+/**
+ * Keep provider and model IDs together without embedding a control character
+ * in the HTML option value. Browsers can truncate NUL-delimited values, which
+ * leaves the model select visually blank even when a model is selected.
+ */
+function modelOptionValue(model: Pick<PiRuntimeModel, "provider" | "id">): string {
+	return JSON.stringify([model.provider, model.id]);
+}
+
+function parseModelOptionValue(value: string): [string, string] | undefined {
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (Array.isArray(parsed) && parsed.length === 2 && typeof parsed[0] === "string" && typeof parsed[1] === "string") {
+			return [parsed[0], parsed[1]];
+		}
+	} catch {
+		// Ignore malformed values; the controlled select will retain its current option.
+	}
+	return undefined;
+}
+
 interface RuntimeControlsProps {
 	strings: ChatStrings;
 	provider: string;
@@ -72,12 +93,12 @@ export function RuntimeControls({ strings, provider, modelId, thinkingLevel, mod
 				<div className="pi-chat__runtime-popover" role="dialog" aria-label={strings.runtimeButtonTitle}>
 					<label className="pi-chat__runtime-control">
 						{strings.modelLabel}
-						<select value={selectedModel ? `${selectedModel.provider}\u0000${selectedModel.id}` : ""} disabled={disabled || models.length === 0} onChange={(event) => {
-							const [provider, nextModelId] = event.currentTarget.value.split("\u0000", 2);
-							if (provider && nextModelId) onChange(provider, nextModelId, thinkingLevel);
+						<select value={selectedModel ? modelOptionValue(selectedModel) : ""} disabled={disabled || models.length === 0} onChange={(event) => {
+							const selection = parseModelOptionValue(event.currentTarget.value);
+							if (selection) onChange(selection[0], selection[1], thinkingLevel);
 						}}>
 							{models.map((model) => (
-								<option key={`${model.provider}/${model.id}`} value={`${model.provider}\u0000${model.id}`}>
+								<option key={`${model.provider}/${model.id}`} value={modelOptionValue(model)}>
 									{model.provider} · {model.name}
 								</option>
 							))}

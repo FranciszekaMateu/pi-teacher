@@ -80,7 +80,7 @@ export function matchQuizAnswer(quiz: PendingQuiz, answer: string | undefined): 
 function parseQuizSource(source: string | undefined): PendingQuiz | undefined {
 	if (source === undefined) return undefined;
 	try {
-		const parsed = JSON.parse(source) as Partial<PendingQuiz>;
+		const parsed = parseQuizJson(source) as Partial<PendingQuiz>;
 		if (typeof parsed.question !== "string" || !parsed.question.trim()) return undefined;
 		if (!Array.isArray(parsed.options) || !parsed.options.every((option) => typeof option === "string")) return undefined;
 		const options = parsed.options.map((option) => option.trim()).filter(Boolean);
@@ -97,5 +97,20 @@ function parseQuizSource(source: string | undefined): PendingQuiz | undefined {
 		};
 	} catch {
 		return undefined;
+	}
+}
+
+/**
+ * Models occasionally emit TeX commands such as `h\in H` directly inside a
+ * JSON string. That is invalid JSON (`\i` is not a JSON escape), so retry with
+ * only invalid backslashes escaped. Valid JSON escapes and Unicode escapes are
+ * left untouched.
+ */
+function parseQuizJson(source: string): unknown {
+	try {
+		return JSON.parse(source);
+	} catch {
+		const repaired = source.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\");
+		return JSON.parse(repaired);
 	}
 }
