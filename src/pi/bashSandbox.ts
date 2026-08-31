@@ -28,7 +28,14 @@ export function createBashSandboxOperations(options: BashSandboxOptions): BashOp
 	const env = filterEnv(options.envAllowlistPrefixes ?? ["PATH", "LANG", "LC_ALL", "TEMP", "TMP", "HOME", "USERPROFILE"]);
 
 	const exec: BashOperations["exec"] = (command, _execCwd, execOptions) => {
-		const firstToken = command.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+		const tokens = tokenizeCommand(command);
+		if (!tokens) {
+			execOptions.onData(Buffer.from("bash: shell operators and control characters are not allowed\n"));
+			return Promise.resolve({ exitCode: 1 });
+		}
+		const executable = tokens[0];
+		if (!executable) return Promise.resolve({ exitCode: 1 });
+		const firstToken = executable.toLowerCase();
 		if (firstToken && !allowed.has(firstToken)) {
 			execOptions.onData(Buffer.from(`bash: ${firstToken}: command not allowed (allowlist)\n`));
 			return Promise.resolve({ exitCode: 1 });
@@ -41,8 +48,8 @@ export function createBashSandboxOperations(options: BashSandboxOptions): BashOp
 				return { exitCode: 130 };
 			}
 			return new Promise<{ exitCode: number | null }>((resolve) => {
-			const child = spawn(command, {
-				shell: true,
+			const child = spawn(executable, tokens.slice(1), {
+				shell: false,
 				cwd,
 				env,
 				windowsHide: true,
@@ -81,6 +88,49 @@ export function createBashSandboxOperations(options: BashSandboxOptions): BashOp
 	};
 
 	return { exec };
+}
+
+/**
+ * Parse the small, argument-only command language supported by the sandbox.
+ * Shell operators are rejected instead of being delegated to a shell, which
+ * prevents an allowlisted executable from turning into arbitrary command
+ * execution (for example `rg pattern .; del ...`).
+ */
+function tokenizeCommand(command: string): string[] | undefined {
+	if (/[;&|<>`$\n\r]/.test(command)) return undefined;
+	const tokens: string[] = [];
+	let token = "";
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+	for (const character of command.trim()) {
+		if (escaped) {
+			token += character;
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) quote = undefined;
+			else token += character;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = character;
+		} else if (/\s/.test(character)) {
+			if (token) {
+				tokens.push(token);
+				token = "";
+			}
+		} else {
+			token += character;
+		}
+	}
+	if (escaped || quote) return undefined;
+	if (token) tokens.push(token);
+	return tokens.length ? tokens : undefined;
 }
 
 function filterEnv(allowedPrefixes: string[]): NodeJS.ProcessEnv {

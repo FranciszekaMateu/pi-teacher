@@ -75,7 +75,7 @@ Then copy `main.js`, `manifest.json`, and `styles.css` from the repo root into `
 
 - **What is sent to the model provider:** your prompts, the conversation history, vault content returned by tools, and tool results. Nothing else. No telemetry.
 - **What stays local:** Pi credentials and provider configuration remain in `~/.pi/agent`; chat sessions remain under `<vault>/.pi/agent/sessions/`. Pi Teacher does not copy or display credentials.
-- **Vault access is read-only by default.** Write/edit tools and the bash tool (allowlisted commands, per-command timeout) require explicit opt-in in settings, and every mutation asks for confirmation by default.
+- **Vault access is read-only by default.** Write/edit tools and the bash tool (allowlisted commands, per-command timeout) require explicit opt-in in settings, and every mutation asks for confirmation by default. Bash runs allowlisted executables directly; shell operators and control characters are rejected, and only provider/runtime environment variables are passed to the child process.
 - Tool paths must be vault-relative; absolute paths and `..` escapes are rejected, and the plugin's own internals are off-limits.
 
 ## Architecture

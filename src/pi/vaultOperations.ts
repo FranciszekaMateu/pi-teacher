@@ -234,6 +234,9 @@ function toVaultRelative(absolutePath: string, cwd: string): string {
 	const cleaned = absolutePath.replace(/\\/g, "/").replace(/\/+$/, "");
 	const base = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
 	if (!cleaned || cleaned === ".") return "";
+	if (cleaned.split("/").includes("..")) {
+		throw new Error(`EACCES: path traversal is not allowed: ${absolutePath}`);
+	}
 	if (base && base !== "/" && (cleaned === base || cleaned.startsWith(`${base}/`))) {
 		return normalizePath(cleaned.slice(base.length).replace(/^\/+/, ""));
 	}

@@ -407,12 +407,7 @@ export class PiSessionService {
 		console.debug("[Pi Teacher] Starting bundled Node RPC runtime", { nodeExecutable, pluginEntrypoint });
 		const child = spawn(nodeExecutable, args, {
 			cwd: vaultRoot,
-			env: {
-				...process.env,
-				// main.js contains the static runtime payload. Do not inherit the
-				// renderer's package path, which used to point at sidecar assets.
-				PI_PACKAGE_DIR: "",
-			},
+			env: runtimeEnvironment(process.env),
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
 		});
@@ -589,6 +584,21 @@ function getVaultBasePath(app: App): string {
 	const basePath = adapter.getBasePath?.();
 	if (!basePath) throw new Error("Pi Teacher requires a filesystem-backed desktop vault.");
 	return basePath;
+}
+
+/** Pass only runtime configuration and provider credentials to the child. */
+function runtimeEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const allowedExact = new Set([
+		"APPDATA", "HOME", "LOCALAPPDATA", "PATHEXT", "PATH", "TEMP", "TMP", "USERPROFILE", "WINDIR",
+	]);
+	const allowedPrefixes = [
+		"ANTHROPIC_", "DEEPSEEK_", "GEMINI_", "GOOGLE_", "OPENAI_", "OPENCODE_", "PI_", "XAI_",
+	];
+	const env: NodeJS.ProcessEnv = { PI_PACKAGE_DIR: "" };
+	for (const [key, value] of Object.entries(source)) {
+		if (allowedExact.has(key) || allowedPrefixes.some((prefix) => key.startsWith(prefix))) env[key] = value;
+	}
+	return env;
 }
 
 async function findKnowledgeNote(app: App, folder: string, chatId: string): Promise<TFile | undefined> {
