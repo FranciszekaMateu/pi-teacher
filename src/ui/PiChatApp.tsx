@@ -65,6 +65,8 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 		const messages = snapshot.streamingMessage ? [...snapshot.messages, snapshot.streamingMessage] : snapshot.messages;
 		return messages.filter(isVisibleChatMessage);
 	}, [snapshot.messages, snapshot.streamingMessage]);
+	const pendingVisual = snapshot.pendingVisual;
+	const pendingFlashcards = snapshot.pendingFlashcards;
 
 	const updateRuntime = (provider: string, modelId: string, effort: ModelThinkingLevel): void => {
 		void service.updateRuntimeSettings(provider, modelId, effort).catch((error) => console.error("[Pi Teacher] Runtime settings update failed", error));
@@ -316,11 +318,11 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 							/>
 						))}
 						{/* Show the visual explanation before testing recall with the quiz. */}
-						{snapshot.pendingVisual ? <VisualCard visual={snapshot.pendingVisual} t={t} onSave={() => void service.saveVisual(snapshot.pendingVisual!)} /> : null}
+						{pendingVisual ? <VisualCard visual={pendingVisual} t={t} onSave={() => void service.saveVisual(pendingVisual)} /> : null}
 						{snapshot.pendingQuiz ? (
 							<QuizCard {...snapshot.pendingQuiz} answer={snapshot.quizAnswer} app={app} freeformValue={freeformQuiz} onFreeformChange={setFreeformQuiz} onAnswer={submitQuizAnswer} onRequestExplanation={requestQuizExplanation} t={t} />
 						) : null}
-						{snapshot.pendingFlashcards?.length ? <FlashcardCard cards={snapshot.pendingFlashcards} t={t} onSave={() => void service.saveFlashcards(snapshot.pendingFlashcards!)} /> : null}
+						{pendingFlashcards?.length ? <FlashcardCard cards={pendingFlashcards} t={t} onSave={() => void service.saveFlashcards(pendingFlashcards)} /> : null}
 						{snapshot.isStreaming && (!snapshot.streamingMessage || snapshot.pendingToolCalls.length > 0) ? (
 							<ThinkingIndicator label={thinkingStatus(snapshot.isStreaming, snapshot.pendingToolCalls.length, t)} />
 						) : null}

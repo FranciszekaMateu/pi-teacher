@@ -51,7 +51,7 @@ export function RuntimeControls({ strings, provider, modelId, thinkingLevel, mod
 			return undefined;
 		}
 		const onPointerDown = (event: PointerEvent): void => {
-			if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+			if (rootRef.current && event.target instanceof Node && !rootRef.current.contains(event.target)) {
 				setOpen(false);
 			}
 		};
