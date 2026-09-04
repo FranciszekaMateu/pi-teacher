@@ -29,6 +29,58 @@ describe("extractQuiz", () => {
 		expect(extractQuiz(text)?.explanation).toBe("Una hipótesis asigna h\\in H.");
 	});
 
+	it("recovers raw TeX without corrupting valid-looking JSON control escapes", () => {
+		const text = "```pi-quiz\n{\"question\":\"Tras procesar \\(\\text{Soleado},\\text{Cálido}\\), ¿cuáles son las fronteras?\",\"options\":[\"\\(S=\\{(\\text{Soleado},\\text{Cálido})\\}\\) y \\(G=\\{(?,?)\\}\\).\"],\"allowFreeform\":false,\"correctOption\":\"\\\\(S=\\\\{(\\\\text{Soleado},\\\\text{Cálido})\\\\}\\\\) y \\(G=\\\\{(?,?)\\\\}\\\\).\",\"explanation\":\"\\(S\\) se generaliza y \\(G\\) permanece.\"}\n```";
+		const quiz = extractQuiz(text);
+		expect(quiz).toMatchObject({
+			question: "Tras procesar \\(\\text{Soleado},\\text{Cálido}\\), ¿cuáles son las fronteras?",
+			options: ["\\(S=\\{(\\text{Soleado},\\text{Cálido})\\}\\) y \\(G=\\{(?,?)\\}\\)."],
+			correctOption: "\\(S=\\{(\\text{Soleado},\\text{Cálido})\\}\\) y \\(G=\\{(?,?)\\}\\).",
+			explanation: "\\(S\\) se generaliza y \\(G\\) permanece.",
+		});
+	});
+
+	it("repairs raw TeX control words inside dollar-delimited math", () => {
+		const text = "```pi-quiz\n{\"question\":\"¿Cuál representa $\\text{un medio}$?\",\"options\":[\"$\\frac{1}{2}$\",\"$x \\neq y$\",\"$\\emptyset$\"],\"allowFreeform\":false,\"correctOption\":\"$\\frac{1}{2}$\"}\n```";
+		expect(extractQuiz(text)).toMatchObject({
+			question: "¿Cuál representa $\\text{un medio}$?",
+			options: ["$\\frac{1}{2}$", "$x \\neq y$", "$\\emptyset$"],
+			correctOption: "$\\frac{1}{2}$",
+		});
+	});
+
+	it("preserves a genuine JSON newline beside raw TeX in the same string", () => {
+		const text = "```pi-quiz\n{\"question\":\"Primera línea\\nSegunda con \\(h\\in H\\).\",\"options\":[\"A\"]}\n```";
+		expect(extractQuiz(text)?.question).toBe("Primera línea\nSegunda con \\(h\\in H\\).");
+	});
+
+	it("preserves genuine JSON control escapes inside every math delimiter", () => {
+		const body = "a\bq\fq\nx\rq\tq";
+		for (const question of [`$${body}$`, `\\(${body}\\)`, `\\[${body}\\]`]) {
+			const payload = JSON.stringify({ question, options: ["A"] });
+			expect(extractQuiz(`\`\`\`pi-quiz\n${payload}\n\`\`\``)?.question).toBe(question);
+		}
+	});
+
+	it("preserves valid JSON Unicode escapes inside math", () => {
+		const text = "```pi-quiz\n{\"question\":\"$\\uD83D\\uDE00$\",\"options\":[\"A\"]}\n```";
+		expect(extractQuiz(text)?.question).toBe("$😀$");
+	});
+
+	it("preserves already escaped TeX", () => {
+		const payload = JSON.stringify({
+			question: "Usa $\\frac{1}{2}$ y \\(x \\neq y\\).",
+			options: ["$\\text{A}$"],
+			allowFreeform: false,
+			correctOption: "$\\text{A}$",
+		});
+		expect(extractQuiz(`\`\`\`pi-quiz\n${payload}\n\`\`\``)).toMatchObject({
+			question: "Usa $\\frac{1}{2}$ y \\(x \\neq y\\).",
+			options: ["$\\text{A}$"],
+			correctOption: "$\\text{A}$",
+		});
+	});
+
 	it("drops blank or non-string explanation/hint values", () => {
 		const blank = "```pi-quiz\n{\"question\":\"x\",\"options\":[\"A\"],\"allowFreeform\":true,\"hint\":\"  \",\"explanation\":42}\n```";
 		const quiz = extractQuiz(blank);

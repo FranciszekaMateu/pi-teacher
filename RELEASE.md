@@ -5,7 +5,7 @@ Releases are automated by [`.github/workflows/release.yml`](.github/workflows/re
 ## 1. Prepare the version
 
 ```bash
-npm version patch   # or minor / major — bumps manifest.json and versions.json too
+npm version patch --no-git-tag-version   # or minor / major — bumps manifest.json and versions.json too
 ```
 
 Confirm:

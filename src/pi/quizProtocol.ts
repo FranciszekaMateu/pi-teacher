@@ -101,16 +101,115 @@ function parseQuizSource(source: string | undefined): PendingQuiz | undefined {
 }
 
 /**
- * Models occasionally emit TeX commands such as `h\in H` directly inside a
- * JSON string. That is invalid JSON (`\i` is not a JSON escape), so retry with
- * only invalid backslashes escaped. Valid JSON escapes and Unicode escapes are
- * left untouched.
+ * Models occasionally emit TeX commands directly inside a JSON string. Apart
+ * from invalid escapes such as `\in`, TeX commands like `\text` are a trap:
+ * JSON accepts `\t` but turns it into a tab before the remaining `ext`.
+ *
+ * Inspect the source before accepting it: raw control words such as `\text`
+ * are valid JSON and would otherwise be silently decoded as control characters.
+ * The syntax-based repair only operates inside strings, uses explicit math
+ * delimiters to disambiguate TeX control words from real JSON escapes, and
+ * preserves already escaped TeX.
  */
 function parseQuizJson(source: string): unknown {
-	try {
-		return JSON.parse(source);
-	} catch {
-		const repaired = source.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\");
-		return JSON.parse(repaired);
+	const repaired = repairQuizJson(source);
+	if (repaired !== source) {
+		try {
+			return JSON.parse(repaired);
+		} catch {
+			// Preserve the normal parser error when repair cannot recover the source.
+		}
 	}
+	return JSON.parse(source);
+}
+
+function repairQuizJson(source: string): string {
+	let repaired = "";
+	let cursor = 0;
+	while (cursor < source.length) {
+		if (source[cursor] !== '"') {
+			repaired += source[cursor];
+			cursor += 1;
+			continue;
+		}
+		const end = findStringEnd(source, cursor);
+		if (end === -1) return source;
+		repaired += `"${repairQuizString(source.slice(cursor + 1, end))}"`;
+		cursor = end + 1;
+	}
+	return repaired;
+}
+
+function findStringEnd(source: string, start: number): number {
+	for (let index = start + 1; index < source.length; index += 1) {
+		if (source[index] !== '"') continue;
+		let backslashes = 0;
+		for (let before = index - 1; before >= start && source[before] === "\\"; before -= 1) backslashes += 1;
+		if (backslashes % 2 === 0) return index;
+	}
+	return -1;
+}
+
+function repairQuizString(value: string): string {
+	let repaired = "";
+	let mathDelimiter: "$" | "$$" | "\\(" | "\\[" | undefined;
+	for (let index = 0; index < value.length;) {
+		if (value[index] === "$" && value[index - 1] !== "\\" && (mathDelimiter === undefined || mathDelimiter.startsWith("$"))) {
+			const delimiter = value.startsWith("$$", index) ? "$$" : "$";
+			if (mathDelimiter === undefined) mathDelimiter = delimiter;
+			else if (mathDelimiter === delimiter) mathDelimiter = undefined;
+			repaired += delimiter;
+			index += delimiter.length;
+			continue;
+		}
+		if (value[index] !== "\\") {
+			repaired += value[index];
+			index += 1;
+			continue;
+		}
+		let end = index;
+		while (value[end] === "\\") end += 1;
+		const count = end - index;
+		const next = value[end] ?? "";
+		const validEscape = isJsonEscape(value, end);
+		const isTexWordMisreadAsEscape = mathDelimiter !== undefined
+			&& validEscape
+			&& isLikelyRawTexControlWord(value, end);
+		repaired += "\\".repeat(count - (count % 2));
+		if (count % 2 === 1) repaired += validEscape && !isTexWordMisreadAsEscape ? "\\" : "\\\\";
+		if (count <= 2 && mathDelimiter === undefined && next === "(") mathDelimiter = "\\(";
+		else if (count <= 2 && mathDelimiter === undefined && next === "[") mathDelimiter = "\\[";
+		else if (count <= 2 && mathDelimiter === "\\(" && next === ")") mathDelimiter = undefined;
+		else if (count <= 2 && mathDelimiter === "\\[" && next === "]") mathDelimiter = undefined;
+		index = end;
+	}
+	return repaired;
+}
+
+const AMBIGUOUS_TEX_CONTROL_WORDS = new Set([
+	"bar", "beta", "bmod", "boxed", "breve",
+	"flat", "forall", "frac",
+	"nabla", "natural", "ne", "neg", "neq", "nexists", "ni", "not", "notin", "nu",
+	"rangle", "rbrace", "rbrack", "rceil", "rfloor", "rho", "right", "rm", "root",
+	"tag", "tan", "tanh", "tau", "text", "tfrac", "theta", "tilde", "times", "to", "top",
+]);
+
+/**
+ * Only b/f/n/r/t need disambiguation: they can start both a JSON control
+ * escape and a TeX control word. A maximal control word followed by an
+ * argument is strong TeX syntax; common argument-less math commands are
+ * recognized explicitly. Valid Unicode escapes always remain JSON escapes.
+ */
+function isLikelyRawTexControlWord(value: string, index: number): boolean {
+	if (!"bfnrt".includes(value[index] ?? "")) return false;
+	const word = /^[A-Za-z]+/.exec(value.slice(index))?.[0];
+	if (!word || word.length < 2) return false;
+	const afterWord = value[index + word.length] ?? "";
+	return afterWord === "{" || afterWord === "[" || AMBIGUOUS_TEX_CONTROL_WORDS.has(word);
+}
+
+function isJsonEscape(value: string, index: number): boolean {
+	const next = value[index] ?? "";
+	if ('"\\/'.includes(next) || "bfnrt".includes(next)) return true;
+	return next === "u" && /^[0-9a-fA-F]{4}$/.test(value.slice(index + 1, index + 5));
 }

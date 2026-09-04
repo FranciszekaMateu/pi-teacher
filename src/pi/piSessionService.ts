@@ -44,6 +44,13 @@ type RpcResponse = {
 type RpcEvent = { type: string; [key: string]: unknown };
 type PendingRequest = { command: string; resolve: (value: RpcResponse) => void; reject: (error: Error) => void };
 
+// A provider that keeps emitting tool calls (or reasoning tokens) must not be
+// able to leave the chat busy forever. These limits are deliberately generous
+// for normal note analysis, but give the learner a deterministic escape hatch.
+const MAX_AGENT_RUN_MS = 3 * 60 * 1000;
+const MAX_TOOL_EXECUTIONS_PER_RUN = 32;
+const ABORT_RPC_TIMEOUT_MS = 12_000;
+
 export interface PiSessionServiceOptions {
 	getSettings: () => PiObsidianSettings;
 	saveSettings: () => Promise<void>;
@@ -67,7 +74,7 @@ export class PiSessionService {
 	private nextRequestId = 1;
 	private readonly pending = new Map<number, PendingRequest>();
 	private stdoutBuffer = "";
-	private readonly stdoutDecoder = new StringDecoder("utf8");
+	private stdoutDecoder = new StringDecoder("utf8");
 	private stderr = "";
 	private resumeSessionPath: string | null = null;
 	private storedMastery: MasteryByConcept = {};
@@ -77,6 +84,13 @@ export class PiSessionService {
 	private streamNotifyTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Stays locked from prompt preflight until agent_end; the RPC ack is early. */
 	private promptInFlight = false;
+	private promptRequestId = 0;
+	private activePromptRequestId: number | null = null;
+	private promptDispatched = false;
+	private promptAcknowledged = false;
+	private agentRunTimer: ReturnType<typeof setTimeout> | null = null;
+	private toolExecutionsThisRun = 0;
+	private runGuardTriggered = false;
 
 	constructor(options: PiSessionServiceOptions) {
 		this.app = options.app;
@@ -278,25 +292,33 @@ export class PiSessionService {
 			this.setError("The agent is already responding.");
 			return;
 		}
+		const requestId = ++this.promptRequestId;
 		this.promptInFlight = true;
-		this.snapshot = { ...this.snapshot, errorMessage: undefined };
+		this.activePromptRequestId = requestId;
+		this.promptDispatched = false;
+		this.promptAcknowledged = false;
+		// Show the busy state immediately. The RPC acknowledgement arrives before
+		// the first agent event, so waiting for `agent_start` leaves a blank gap.
+		this.snapshot = { ...this.snapshot, errorMessage: undefined, isStreaming: true };
 		this.notify();
+		this.startAgentRunGuard();
 		try {
 			await this.initialize();
-			if (this.snapshot.isStreaming) {
-				this.promptInFlight = false;
-				this.setError("The agent is already responding.");
-				return;
-			}
+			// Stop may be selected while the runtime is still starting. In that case
+			// this request is stale and must never reach the provider afterward.
+			if (this.activePromptRequestId !== requestId) return;
 			const sourceUrls = providedSourceUrls(prompt);
 			const sourceContext = sourceUrls.length ? `\n\n<pi-user-provided-sources>\n${sourceUrls.map((url) => `- ${url}`).join("\n")}\n</pi-user-provided-sources>` : "";
 			// Calibrate the first prompt of a fresh lesson with the persisted learner profile.
 			const isFirstPrompt = this.snapshot.messages.length === 0 && !this.snapshot.streamingMessage;
 			const profileContext = isFirstPrompt ? learnerProfilePrompt(mergeMastery(this.storedMastery, this.snapshot.mastery), this.masteryTitles) : null;
 			const message = `${profileContext ? `${profileContext}\n\n` : ""}${prompt}${sourceContext}`;
+			this.promptDispatched = true;
 			await this.sendCommand("prompt", { message, ...(images?.length ? { images } : {}) });
+			if (this.activePromptRequestId === requestId) this.promptAcknowledged = true;
 		} catch (error) {
-			this.promptInFlight = false;
+			if (this.activePromptRequestId !== requestId) return;
+			this.finishPromptRequest(requestId);
 			this.setError(toSafeError(error));
 		}
 	}
@@ -328,15 +350,50 @@ export class PiSessionService {
 	}
 
 	abort(): void {
-		void this.sendCommand("abort").catch((error) => this.setError(toSafeError(error)));
+		const requestId = this.activePromptRequestId;
+		const requestSequence = this.promptRequestId;
+		if (requestId !== null && !this.promptDispatched) {
+			this.finishPromptRequest(requestId);
+			this.snapshot = { ...this.snapshot, isStreaming: false, pendingToolCalls: [] };
+			this.notify();
+			return;
+		}
+		if (requestId !== null && !this.promptAcknowledged) {
+			// Pi cannot cancel its own auth/compaction preflight: abort() sees an
+			// idle agent and the original prompt could start afterward. Stop this
+			// child instead; the next prompt will initialize a fresh runtime.
+			this.finishPromptRequest(requestId);
+			this.terminateRuntime(new Error("Prompt cancelled before Pi acknowledged it."));
+			this.snapshot = { ...this.snapshot, isStreaming: false, pendingToolCalls: [] };
+			this.notify();
+			return;
+		}
+		void withRpcTimeout(this.sendCommand("abort"), ABORT_RPC_TIMEOUT_MS, "abort")
+			.then(() => {
+				// `abort` resolves only after Pi has stopped the active agent. If an
+				// agent_end event arrived first, do not disturb a newer prompt.
+				if (this.promptRequestId !== requestSequence) return;
+				if (requestId !== null) this.finishPromptRequest(requestId);
+				this.snapshot = { ...this.snapshot, isStreaming: false, pendingToolCalls: [] };
+				this.notify();
+			})
+			.catch((error) => {
+				if (this.promptRequestId === requestSequence) {
+					this.finishPromptRequest(requestId);
+					this.terminateRuntime(error instanceof Error ? error : new Error(String(error)));
+					this.setError(toSafeError(error));
+				}
+			});
 	}
 
 	async newSession(): Promise<void> {
 		try {
-			this.promptInFlight = false;
+			this.finishPromptRequest(this.activePromptRequestId);
 			this.resumeSessionPath = null;
 			await this.initialize();
 			await this.sendCommand("new_session");
+			const state = await withRpcTimeout(this.sendCommand("get_state"), 12_000, "get_state");
+			this.resumeSessionPath = state.data?.sessionFile ?? null;
 			this.snapshot = this.createSnapshot();
 			this.notify();
 		} catch (error) {
@@ -366,6 +423,7 @@ export class PiSessionService {
 	}
 
 	dispose(): void {
+		this.clearAgentRunGuard();
 		if (this.streamNotifyTimer) {
 			clearTimeout(this.streamNotifyTimer);
 			this.streamNotifyTimer = null;
@@ -412,11 +470,18 @@ export class PiSessionService {
 			windowsHide: true,
 		});
 		this.child = child;
-		child.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
-		child.stderr.on("data", (chunk: Buffer) => {
-			this.stderr = limitText(`${this.stderr}${chunk.toString("utf8")}`, 4000);
+		this.stderr = "";
+		this.stdoutBuffer = "";
+		this.stdoutDecoder = new StringDecoder("utf8");
+		child.stdout.on("data", (chunk: Buffer) => {
+			if (this.child === child) this.handleStdout(chunk);
 		});
-		child.on("error", (error) => this.handleProcessFailure(new Error(`Could not start Pi runtime: ${error.message}`)));
+		child.stderr.on("data", (chunk: Buffer) => {
+			if (this.child === child) this.stderr = limitText(`${this.stderr}${chunk.toString("utf8")}`, 4000);
+		});
+		child.on("error", (error) => {
+			if (this.child === child) this.handleProcessFailure(new Error(`Could not start Pi runtime: ${error.message}`));
+		});
 		child.on("exit", (code, signal) => {
 			if (this.child !== child) return;
 			this.child = null;
@@ -446,6 +511,7 @@ export class PiSessionService {
 		const settings = this.getSettings();
 		const data = state.data;
 		const model = data?.model;
+		if (!this.resumeSessionPath && data?.sessionFile) this.resumeSessionPath = data.sessionFile;
 		// Preserve protocol state hydrated from the transcript (lesson, pending
 		// quiz, visuals, flashcards); only refresh runtime + session fields.
 		return {
@@ -497,7 +563,19 @@ export class PiSessionService {
 			return;
 		}
 		const event = message as RpcEvent;
-		if (event.type === "agent_end") this.promptInFlight = false;
+		if (event.type === "agent_start") {
+			this.toolExecutionsThisRun = 0;
+			if (!this.runGuardTriggered) this.startAgentRunGuard();
+		}
+		if (event.type === "tool_execution_end") {
+			this.toolExecutionsThisRun += 1;
+			if (this.toolExecutionsThisRun >= MAX_TOOL_EXECUTIONS_PER_RUN) {
+				this.stopAgentRun("The model was stopped after too many tool calls. Try a shorter note or lower the thinking effort.");
+			}
+		}
+		if (event.type === "agent_end") {
+			this.finishPromptRequest(this.activePromptRequestId);
+		}
 		if (event.type === "agent_end" && typeof event.errorMessage === "string") {
 			console.error("[Pi Teacher] Agent turn failed", event.errorMessage);
 		}
@@ -550,7 +628,7 @@ export class PiSessionService {
 	}
 
 	private handleProcessFailure(error: Error): void {
-		this.promptInFlight = false;
+		this.finishPromptRequest(this.activePromptRequestId);
 		this.rejectPending(error);
 		this.setError(toSafeError(error));
 	}
@@ -558,6 +636,17 @@ export class PiSessionService {
 	private rejectPending(error: Error): void {
 		for (const pending of this.pending.values()) pending.reject(error);
 		this.pending.clear();
+	}
+
+	private terminateRuntime(error: Error): void {
+		const child = this.child;
+		this.child = null;
+		this.stdoutBuffer = "";
+		this.stdoutDecoder = new StringDecoder("utf8");
+		this.rejectPending(error);
+		if (child) {
+			try { child.kill("SIGTERM"); } catch { /* process is already gone */ }
+		}
 	}
 
 	private createSnapshot(): ChatSnapshot {
@@ -569,8 +658,67 @@ export class PiSessionService {
 		});
 	}
 
+	private startAgentRunGuard(): void {
+		if (!this.promptInFlight || this.agentRunTimer) return;
+		this.agentRunTimer = setTimeout(() => {
+			this.agentRunTimer = null;
+			this.stopAgentRun("The model was stopped because it did not finish. Try a shorter note or lower the thinking effort.");
+		}, MAX_AGENT_RUN_MS);
+	}
+
+	private clearAgentRunGuard(): void {
+		if (this.agentRunTimer) {
+			clearTimeout(this.agentRunTimer);
+			this.agentRunTimer = null;
+		}
+		this.toolExecutionsThisRun = 0;
+		this.runGuardTriggered = false;
+	}
+
+	private finishPromptRequest(requestId: number | null): void {
+		if (requestId !== null && this.activePromptRequestId !== requestId) return;
+		this.promptInFlight = false;
+		this.activePromptRequestId = null;
+		this.promptDispatched = false;
+		this.promptAcknowledged = false;
+		this.clearAgentRunGuard();
+	}
+
+	private stopAgentRun(reason: string): void {
+		if (this.runGuardTriggered || !this.promptInFlight) return;
+		const requestId = this.activePromptRequestId;
+		const promptDispatched = this.promptDispatched;
+		const promptAcknowledged = this.promptAcknowledged;
+		this.clearAgentRunGuard();
+		this.runGuardTriggered = true;
+		if (!promptDispatched) {
+			this.finishPromptRequest(requestId);
+			this.setError(reason);
+			return;
+		}
+		if (!promptAcknowledged) {
+			this.finishPromptRequest(requestId);
+			this.terminateRuntime(new Error(reason));
+			this.setError(reason);
+			return;
+		}
+		void withRpcTimeout(this.sendCommand("abort"), ABORT_RPC_TIMEOUT_MS, "abort")
+			.then(() => {
+				if (requestId !== null && this.promptRequestId !== requestId) return;
+				this.finishPromptRequest(requestId);
+				this.setError(reason);
+			})
+			.catch((error) => {
+				if (requestId === null || this.promptRequestId === requestId) {
+					this.finishPromptRequest(requestId);
+					this.terminateRuntime(error instanceof Error ? error : new Error(String(error)));
+					this.setError(reason);
+				}
+			});
+	}
+
 	private setError(message: string): void {
-		this.snapshot = { ...this.snapshot, isStreaming: false, errorMessage: message };
+		this.snapshot = { ...this.snapshot, isStreaming: false, pendingToolCalls: [], errorMessage: message };
 		this.notify();
 	}
 

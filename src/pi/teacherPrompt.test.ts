@@ -17,4 +17,10 @@ describe("teacherSystemPrompt", () => {
 		expect(prompt).toContain("There must never be more than one active quiz");
 		expect(prompt).toContain("pi-visual, then pi-quiz");
 	});
+
+	it("does not reread an attached note in a tool loop", () => {
+		const prompt = teacherSystemPrompt();
+		expect(prompt).toContain("its content is already loaded and is the authoritative source");
+		expect(prompt).toContain("stop calling tools once you have enough information to answer");
+	});
 });

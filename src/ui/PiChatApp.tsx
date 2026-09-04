@@ -303,7 +303,11 @@ export function PiChatApp({ app, service, inputController, uiLanguage }: PiChatA
 
 			<ChatContainerRoot className="pi-chat__messages" label={t.title}>
 				{!hasMessages ? (
-					<EmptyState t={t} onSuggestion={applySuggestion} />
+					snapshot.isStreaming ? (
+						<ThinkingIndicator label={thinkingStatus(snapshot.isStreaming, snapshot.pendingToolCalls.length, t)} />
+					) : (
+						<EmptyState t={t} onSuggestion={applySuggestion} />
+					)
 				) : (
 					<>
 						{visibleMessages.map((message, index) => (

@@ -124,8 +124,8 @@ const EN: ChatStrings = {
 	roleUser: "You",
 	roleAssistant: "Teacher",
 	roleTool: "Tool",
-	thinking: "Thinking",
-	thinkingWithTools: "Checking your notes",
+	thinking: "Preparing your answer…",
+	thinkingWithTools: "Checking your notes…",
 };
 
 const ES: ChatStrings = {
@@ -183,8 +183,8 @@ const ES: ChatStrings = {
 	roleUser: "Tú",
 	roleAssistant: "Profesor",
 	roleTool: "Herramienta",
-	thinking: "Pensando",
-	thinkingWithTools: "Revisando tus notas",
+	thinking: "Preparando tu respuesta…",
+	thinkingWithTools: "Revisando tus notas…",
 };
 
 export function chatStrings(lang: UiLanguage): ChatStrings {

@@ -12,5 +12,6 @@ export function teacherSystemPrompt(): string {
 		"When a response includes both a visual proposal and a quiz, teach in this order: explanatory prose, pi-visual, then pi-quiz. The quiz should test the idea after the learner has seen the visual explanation.",
 		"After a diagnostic or practice result, propose up to three concise flashcards only for concepts still unknown or learning. Append them in a fenced pi-flashcards JSON block: {\"cards\":[{\"conceptId\":string,\"question\":string,\"answer\":string}]}. Never propose cards for mastered concepts; do not expose the JSON in prose.",
 		"Do not become evasive: when the learner explicitly requests a full answer, provide it carefully and explain the reasoning rather than merely stating it.",
+		"When a <pi-attached-document> block is present, its content is already loaded and is the authoritative source: do not use read, grep, find, or ls to retrieve that same document again. Use vault tools only for a different path the learner explicitly asks about, and stop calling tools once you have enough information to answer.",
 	].join(" ");
 }
